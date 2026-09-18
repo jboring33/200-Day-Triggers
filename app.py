@@ -43,21 +43,32 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                 st.warning(f"Skipping {ticker}: Insufficient historical data (requires >205 trading days).")
                 continue
             
+            # --- FIX: Ensure single-column Series extraction for yfinance multi-index data ---
             close = df['Close']
-            curr_price = close.iloc[-1]
+            if isinstance(close, pd.DataFrame):
+                close = close.squeeze()
+                
+            high = df['High'].squeeze() if isinstance(df['High'], pd.DataFrame) else df['High']
+            low = df['Low'].squeeze() if isinstance(df['Low'], pd.DataFrame) else df['Low']
+            
+            # Reconstruct clean single-level OHLC DataFrame for ATR
+            df_clean = pd.DataFrame({'High': high, 'Low': low, 'Close': close})
+            
+            # Extract scalar values safely as Python floats
+            curr_price = float(close.iloc[-1])
             
             # Moving Average Calculations
             ema200 = close.ewm(span=200, adjust=False).mean()
             sma50 = close.rolling(window=50).mean()
             sma200 = close.rolling(window=200).mean()
             
-            curr_ema200 = ema200.iloc[-1]
-            curr_sma50 = sma50.iloc[-1]
-            curr_sma200 = sma200.iloc[-1]
-            prev_ema200 = ema200.iloc[-(slope_window + 1)]
+            curr_ema200 = float(ema200.iloc[-1])
+            curr_sma50 = float(sma50.iloc[-1])
+            curr_sma200 = float(sma200.iloc[-1])
+            prev_ema200 = float(ema200.iloc[-(slope_window + 1)])
             
             # Dynamic Volatility Buffer
-            atr = calculate_atr(df).iloc[-1]
+            atr = float(calculate_atr(df_clean).iloc[-1])
             atr_pct = (atr / curr_price)
             effective_buffer_pct = max(default_buffer_pct, atr_pct * 1.5)
             
@@ -73,7 +84,7 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             else:
                 slope = "FLAT"
                 
-            # Golden/Death Cross
+            # Golden/Death Cross Evaluation (Scalars fix logical comparison crash)
             ma_cross = "GOLDEN CROSS (Bullish)" if curr_sma50 > curr_sma200 else "DEATH CROSS (Bearish)"
                 
             # Signal Logic
@@ -98,8 +109,8 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
 
             results.append({
                 "Ticker": ticker,
-                "Price": round(float(curr_price), 2),
-                "200 EMA": round(float(curr_ema200), 2),
+                "Price": round(curr_price, 2),
+                "200 EMA": round(curr_ema200, 2),
                 "Dist EMA (%)": f"{pct_from_ema:+.2f}%",
                 "Dynamic Buffer": f"±{effective_buffer_pct*100:.1f}%",
                 "EMA Slope": slope,
@@ -134,7 +145,7 @@ if st.sidebar.button("Run Screener", type="primary") or "ran_once" not in st.ses
         df_results = analyze_enhanced_sma_strategy(tickers_list, default_buffer_pct=buffer_setting)
         
     if not df_results.empty:
-        # Display Key Summary Metrics
+        # Key Summary Metrics
         col1, col2, col3 = st.columns(3)
         col1.metric("Total Tickers Evaluated", len(df_results))
         col2.metric("Bullish Signals", len(df_results[df_results["Status"].str.contains("BULLISH")]))
@@ -142,7 +153,7 @@ if st.sidebar.button("Run Screener", type="primary") or "ran_once" not in st.ses
         
         st.divider()
         
-        # Display Interactive Table
+        # Interactive Table Display
         st.dataframe(
             df_results,
             use_container_width=True,
@@ -153,7 +164,7 @@ if st.sidebar.button("Run Screener", type="primary") or "ran_once" not in st.ses
             }
         )
         
-        # Download Button
+        # Download CSV
         csv = df_results.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Download CSV Report",
