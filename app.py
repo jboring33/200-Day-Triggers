@@ -1,13 +1,20 @@
 """
 Repository: 200 Day Triggers
-Description: Enhanced 200-Day Trend & Volatility Screener using 200 EMA, 50/200 Crosses, 
-             and ATR-based Dynamic Noise Buffers.
+Description: Streamlit Web Application for 200-Day Trend & Volatility Screener
+             using 200 EMA, 50/200 Crosses, and ATR Dynamic Buffers.
 """
 
-import os
+import streamlit as st
 import pandas as pd
 import yfinance as yf
 from datetime import datetime
+
+# Streamlit Page Config
+st.set_page_config(
+    page_title="200 Day Triggers",
+    page_icon="📈",
+    layout="wide"
+)
 
 REPO_NAME = "200 Day Triggers"
 
@@ -25,28 +32,21 @@ def calculate_atr(df, window=14):
     return tr.rolling(window=window).mean()
 
 def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5, default_buffer_pct=0.02):
-    """
-    Evaluates tickers for the '200 Day Triggers' repository:
-    - 200 EMA (Faster reactivity than SMA)
-    - 50 / 200 Golden Cross / Death Cross trend detection
-    - Volatility-adjusted noise buffer (ATR-based for crypto & high-volatility equities)
-    """
+    """Evaluates tickers using 200 EMA, Golden/Death Cross, and ATR dynamic buffers."""
     results = []
     
     for ticker in tickers:
         try:
-            # Fetch OHLCV price data
             df = yf.download(ticker, period=lookback_period, auto_adjust=True, progress=False)
             
             if df.empty or len(df) < 200 + slope_window:
-                print(f"[{REPO_NAME}] Skipping {ticker}: Insufficient data (requires >205 trading days).")
+                st.warning(f"Skipping {ticker}: Insufficient historical data (requires >205 trading days).")
                 continue
             
-            # Extract closing prices
             close = df['Close']
             curr_price = close.iloc[-1]
             
-            # 1. Moving Average Calculations
+            # Moving Average Calculations
             ema200 = close.ewm(span=200, adjust=False).mean()
             sma50 = close.rolling(window=50).mean()
             sma200 = close.rolling(window=200).mean()
@@ -56,16 +56,15 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             curr_sma200 = sma200.iloc[-1]
             prev_ema200 = ema200.iloc[-(slope_window + 1)]
             
-            # 2. Volatility-based buffer adjustment via ATR
+            # Dynamic Volatility Buffer
             atr = calculate_atr(df).iloc[-1]
             atr_pct = (atr / curr_price)
-            # Use max between default 2% buffer and 1.5 x ATR%
             effective_buffer_pct = max(default_buffer_pct, atr_pct * 1.5)
             
             upper_threshold = curr_ema200 * (1 + effective_buffer_pct)
             lower_threshold = curr_ema200 * (1 - effective_buffer_pct)
             
-            # 3. Slope calculation over the slope window
+            # Slope Calculation
             ema_diff_pct = ((curr_ema200 - prev_ema200) / prev_ema200) * 100
             if ema_diff_pct > 0.05:
                 slope = "UP"
@@ -74,37 +73,33 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             else:
                 slope = "FLAT"
                 
-            # 4. Golden / Death Cross Detection
-            if curr_sma50 > curr_sma200:
-                ma_cross = "GOLDEN CROSS (Bullish)"
-            else:
-                ma_cross = "DEATH CROSS (Bearish)"
+            # Golden/Death Cross
+            ma_cross = "GOLDEN CROSS (Bullish)" if curr_sma50 > curr_sma200 else "DEATH CROSS (Bearish)"
                 
-            # 5. Trigger Logic with Noise Buffer
+            # Signal Logic
             pct_from_ema = ((curr_price - curr_ema200) / curr_ema200) * 100
             
             if curr_price > upper_threshold and slope in ["UP", "FLAT"]:
                 signal = "BUY / BULLISH HOLD"
-                status = "BULLISH"
+                status = "🟢 BULLISH"
                 reason = f"Price > {effective_buffer_pct*100:.1f}% buffer above 200 EMA & slope is {slope}."
             elif curr_price < lower_threshold and slope == "DOWN":
                 signal = "SELL / CASH OUT"
-                status = "BEARISH"
+                status = "🔴 BEARISH"
                 reason = f"Price < {effective_buffer_pct*100:.1f}% buffer below 200 EMA & slope is DOWN."
             elif lower_threshold <= curr_price <= upper_threshold:
                 signal = "NOISE BUFFER ZONE"
-                status = "NEUTRAL"
+                status = "⚪ NEUTRAL"
                 reason = f"Price within ±{effective_buffer_pct*100:.1f}% noise buffer of 200 EMA; avoid whipsaw."
             else:
                 signal = "WATCH / CAUTION"
-                status = "WARNING"
+                status = "🟡 WARNING"
                 reason = f"Price crossed EMA but slope ({slope}) or buffer does not confirm exit/entry."
 
             results.append({
-                "Repo": REPO_NAME,
                 "Ticker": ticker,
-                "Price": round(curr_price, 2),
-                "200 EMA": round(curr_ema200, 2),
+                "Price": round(float(curr_price), 2),
+                "200 EMA": round(float(curr_ema200), 2),
                 "Dist EMA (%)": f"{pct_from_ema:+.2f}%",
                 "Dynamic Buffer": f"±{effective_buffer_pct*100:.1f}%",
                 "EMA Slope": slope,
@@ -115,33 +110,56 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             })
             
         except Exception as e:
-            print(f"[{REPO_NAME}] Error processing {ticker}: {e}")
+            st.error(f"Error processing {ticker}: {e}")
             
     return pd.DataFrame(results)
 
+# --- Streamlit Dashboard UI ---
 
-if __name__ == "__main__":
-    watchlist = ["SPY", "QQQ", "GLD", "BTC-USD", "NVDA", "AAPL", "TLT", "IWM"]
+st.title(f"📈 {REPO_NAME}")
+st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+st.sidebar.header("Screener Configuration")
+default_tickers = "SPY, QQQ, GLD, BTC-USD, NVDA, AAPL, TLT, IWM"
+ticker_input = st.sidebar.text_area("Watchlist Tickers (comma-separated):", value=default_tickers)
+
+buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100
+
+if st.sidebar.button("Run Screener", type="primary") or "ran_once" not in st.session_state:
+    st.session_state["ran_once"] = True
     
-    print("=" * 110)
-    print(f"  REPOSITORY: {REPO_NAME} — SCREENER REPORT ({datetime.now().strftime('%Y-%m-%d')})")
-    print("=" * 110)
+    tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
     
-    df_results = analyze_enhanced_sma_strategy(watchlist)
-    
-    # Configure display output
-    pd.set_option('display.max_columns', None)
-    pd.set_option('display.max_colwidth', None)
-    pd.set_option('display.width', 1000)
-    
-    if not df_results.empty:
-        print(df_results.drop(columns=["Repo"]).to_string(index=False))
+    with st.spinner("Fetching market data and calculating indicators..."):
+        df_results = analyze_enhanced_sma_strategy(tickers_list, default_buffer_pct=buffer_setting)
         
-        # Save output to CSV with repo branding
-        csv_filename = "200_day_triggers_report.csv"
-        df_results.to_csv(csv_filename, index=False)
-        print("\n" + "=" * 110)
-        print(f"Report saved locally to: {csv_filename}")
-        print("=" * 110)
+    if not df_results.empty:
+        # Display Key Summary Metrics
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Tickers Evaluated", len(df_results))
+        col2.metric("Bullish Signals", len(df_results[df_results["Status"].str.contains("BULLISH")]))
+        col3.metric("Bearish Signals", len(df_results[df_results["Status"].str.contains("BEARISH")]))
+        
+        st.divider()
+        
+        # Display Interactive Table
+        st.dataframe(
+            df_results,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Price": st.column_config.NumberColumn(format="$%.2f"),
+                "200 EMA": st.column_config.NumberColumn(format="$%.2f"),
+            }
+        )
+        
+        # Download Button
+        csv = df_results.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Download CSV Report",
+            data=csv,
+            file_name="200_day_triggers_report.csv",
+            mime="text/csv"
+        )
     else:
-        print("No data retrieved.")
+        st.info("No results to display.")
