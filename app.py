@@ -1,7 +1,7 @@
 """
 Repository: 200 Day Triggers
-Description: Streamlit Web Application for 200-Day Trend & Volatility Screener
-             using 200 EMA, 50/200 Crosses, and ATR Dynamic Buffers.
+Description: Streamlit Web Application for Macro (200 EMA) and Short-Term (20 EMA / 50 SMA)
+             Trend & Volatility Screening with ATR Dynamic Buffers.
 """
 
 import streamlit as st
@@ -32,7 +32,7 @@ def calculate_atr(df, window=14):
     return tr.rolling(window=window).mean()
 
 def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5, default_buffer_pct=0.02):
-    """Evaluates tickers using 200 EMA, Golden/Death Cross, and ATR dynamic buffers."""
+    """Evaluates tickers across Macro (200 EMA) and Short-Term (20 EMA / 50 SMA) trends."""
     results = []
     
     for ticker in tickers:
@@ -43,7 +43,7 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                 st.warning(f"Skipping {ticker}: Insufficient historical data (requires >205 trading days).")
                 continue
             
-            # --- FIX: Ensure single-column Series extraction for yfinance multi-index data ---
+            # --- Ensure single-column Series extraction for yfinance data ---
             close = df['Close']
             if isinstance(close, pd.DataFrame):
                 close = close.squeeze()
@@ -51,19 +51,21 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             high = df['High'].squeeze() if isinstance(df['High'], pd.DataFrame) else df['High']
             low = df['Low'].squeeze() if isinstance(df['Low'], pd.DataFrame) else df['Low']
             
-            # Reconstruct clean single-level OHLC DataFrame for ATR
+            # Clean OHLC DataFrame for ATR
             df_clean = pd.DataFrame({'High': high, 'Low': low, 'Close': close})
             
-            # Extract scalar values safely as Python floats
+            # Extract current scalar price
             curr_price = float(close.iloc[-1])
             
             # Moving Average Calculations
-            ema200 = close.ewm(span=200, adjust=False).mean()
+            ema20 = close.ewm(span=20, adjust=False).mean()
             sma50 = close.rolling(window=50).mean()
+            ema200 = close.ewm(span=200, adjust=False).mean()
             sma200 = close.rolling(window=200).mean()
             
-            curr_ema200 = float(ema200.iloc[-1])
+            curr_ema20 = float(ema20.iloc[-1])
             curr_sma50 = float(sma50.iloc[-1])
+            curr_ema200 = float(ema200.iloc[-1])
             curr_sma200 = float(sma200.iloc[-1])
             prev_ema200 = float(ema200.iloc[-(slope_window + 1)])
             
@@ -84,16 +86,34 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             else:
                 slope = "FLAT"
                 
-            # Golden/Death Cross Evaluation (Scalars fix logical comparison crash)
+            # Golden/Death Cross Evaluation
             ma_cross = "GOLDEN CROSS (Bullish)" if curr_sma50 > curr_sma200 else "DEATH CROSS (Bearish)"
                 
+            # Short-Term Momentum Alignment Check
+            above_20_ema = curr_price > curr_ema20
+            above_50_sma = curr_price > curr_sma50
+            
+            if above_20_ema and above_50_sma:
+                short_term_momentum = "BULLISH (Above 20 EMA & 50 SMA)"
+            elif not above_20_ema and not above_50_sma:
+                short_term_momentum = "BEARISH (Below 20 EMA & 50 SMA)"
+            elif above_20_ema and not above_50_sma:
+                short_term_momentum = "MIXED (Above 20 EMA / Below 50 SMA)"
+            else:
+                short_term_momentum = "PULLBACK (Below 20 EMA / Above 50 SMA)"
+                
             # Signal Logic
-            pct_from_ema = ((curr_price - curr_ema200) / curr_ema200) * 100
+            pct_from_ema200 = ((curr_price - curr_ema200) / curr_ema200) * 100
             
             if curr_price > upper_threshold and slope in ["UP", "FLAT"]:
-                signal = "BUY / BULLISH HOLD"
-                status = "🟢 BULLISH"
-                reason = f"Price > {effective_buffer_pct*100:.1f}% buffer above 200 EMA & slope is {slope}."
+                if above_20_ema and above_50_sma:
+                    signal = "BUY / BULLISH HOLD"
+                    status = "🟢 BULLISH"
+                    reason = f"Price > {effective_buffer_pct*100:.1f}% buffer above 200 EMA with full short-term momentum."
+                else:
+                    signal = "MACRO BULL / WAIT FOR ENTRY"
+                    status = "🟡 PULLBACK"
+                    reason = f"Macro trend is UP (>200 EMA), but price is below 20 EMA/50 SMA. Wait for momentum reclaim."
             elif curr_price < lower_threshold and slope == "DOWN":
                 signal = "SELL / CASH OUT"
                 status = "🔴 BEARISH"
@@ -110,10 +130,12 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             results.append({
                 "Ticker": ticker,
                 "Price": round(curr_price, 2),
+                "20 EMA": round(curr_ema20, 2),
+                "50 SMA": round(curr_sma50, 2),
                 "200 EMA": round(curr_ema200, 2),
-                "Dist EMA (%)": f"{pct_from_ema:+.2f}%",
+                "Dist 200EMA (%)": f"{pct_from_ema200:+.2f}%",
                 "Dynamic Buffer": f"±{effective_buffer_pct*100:.1f}%",
-                "EMA Slope": slope,
+                "Short-Term Trend": short_term_momentum,
                 "50/200 Trend": ma_cross,
                 "Signal": signal,
                 "Status": status,
@@ -146,10 +168,11 @@ if st.sidebar.button("Run Screener", type="primary") or "ran_once" not in st.ses
         
     if not df_results.empty:
         # Key Summary Metrics
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Tickers Evaluated", len(df_results))
-        col2.metric("Bullish Signals", len(df_results[df_results["Status"].str.contains("BULLISH")]))
-        col3.metric("Bearish Signals", len(df_results[df_results["Status"].str.contains("BEARISH")]))
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Tickers", len(df_results))
+        col2.metric("Full Bullish Signals", len(df_results[df_results["Status"].str.contains("BULLISH")]))
+        col3.metric("Macro Bull (Pullback)", len(df_results[df_results["Status"].str.contains("PULLBACK")]))
+        col4.metric("Bearish Signals", len(df_results[df_results["Status"].str.contains("BEARISH")]))
         
         st.divider()
         
@@ -160,6 +183,8 @@ if st.sidebar.button("Run Screener", type="primary") or "ran_once" not in st.ses
             hide_index=True,
             column_config={
                 "Price": st.column_config.NumberColumn(format="$%.2f"),
+                "20 EMA": st.column_config.NumberColumn(format="$%.2f"),
+                "50 SMA": st.column_config.NumberColumn(format="$%.2f"),
                 "200 EMA": st.column_config.NumberColumn(format="$%.2f"),
             }
         )
