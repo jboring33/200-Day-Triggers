@@ -1,7 +1,8 @@
 """
 Repository: 200 Day Triggers
 Description: Streamlit Web Application for Macro (200 EMA) and Short-Term (20 EMA / 50 SMA)
-             Trend & Volatility Screening with ATR Dynamic Buffers and URL Parameter Persistence.
+             Trend & Volatility Screening with ATR Dynamic Buffers, Flyover Tooltips,
+             and URL Parameter Persistence.
 """
 
 import streamlit as st
@@ -127,18 +128,26 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                 status = "🟡 WARNING"
                 reason = f"Price crossed EMA but slope ({slope}) or buffer does not confirm exit/entry."
 
+            # Construct comprehensive Flyover detail string for tooltip display
+            flyover_summary = (
+                f"{reason} | Price: ${curr_price:.2f} | 20 EMA: ${curr_ema20:.2f} | "
+                f"50 SMA: ${curr_sma50:.2f} | 200 EMA: ${curr_ema200:.2f} | "
+                f"Dist 200EMA: {pct_from_ema200:+.2f}% | Buffer: ±{effective_buffer_pct*100:.1f}% | "
+                f"Short Trend: {short_term_momentum} | Cross: {ma_cross}"
+            )
+
             results.append({
-                "Status": status,
+                "Status Internal": status,
                 "Status & Signal": f"{status} - {signal}",
                 "Ticker": ticker,
+                "Trigger Details": flyover_summary,
+                # Retain raw metrics for CSV export downloading
                 "Price": round(curr_price, 2),
                 "20 EMA": round(curr_ema20, 2),
                 "50 SMA": round(curr_sma50, 2),
                 "200 EMA": round(curr_ema200, 2),
                 "Dist 200EMA (%)": f"{pct_from_ema200:+.2f}%",
                 "Dynamic Buffer": f"±{effective_buffer_pct*100:.1f}%",
-                "Short-Term Trend": short_term_momentum,
-                "50/200 Trend": ma_cross,
                 "Reason": reason
             })
             
@@ -155,13 +164,11 @@ st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 # --- URL Parameter Management ---
 DEFAULT_TICKER_STRING = "SPY, QQQ, GLD, BTC-USD, NVDA, AAPL, TLT, IWM"
 
-# Read tickers parameter from URL bar if present
 query_params = st.query_params
 initial_tickers = query_params.get("tickers", DEFAULT_TICKER_STRING)
 
 st.sidebar.header("Screener Configuration")
 
-# Input field bound to initial_tickers value
 ticker_input = st.sidebar.text_area(
     "Watchlist Tickers (comma-separated):", 
     value=initial_tickers,
@@ -170,7 +177,6 @@ ticker_input = st.sidebar.text_area(
 
 buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100
 
-# Update URL query parameters based on current user input
 clean_ticker_str = ", ".join([t.strip().upper() for t in ticker_input.split(",") if t.strip()])
 st.query_params["tickers"] = clean_ticker_str
 
@@ -186,32 +192,38 @@ if st.sidebar.button("Run Screener", type="primary") or "ran_once" not in st.ses
         # Key Summary Metrics
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Total Tickers", len(df_results))
-        col2.metric("Full Bullish Signals", len(df_results[df_results["Status"].str.contains("BULLISH")]))
-        col3.metric("Macro Bull (Pullback)", len(df_results[df_results["Status"].str.contains("PULLBACK")]))
-        col4.metric("Bearish Signals", len(df_results[df_results["Status"].str.contains("BEARISH")]))
+        col2.metric("Full Bullish Signals", len(df_results[df_results["Status Internal"].str.contains("BULLISH")]))
+        col3.metric("Macro Bull (Pullback)", len(df_results[df_results["Status Internal"].str.contains("PULLBACK")]))
+        col4.metric("Bearish Signals", len(df_results[df_results["Status Internal"].str.contains("BEARISH")]))
         
         st.divider()
         
-        # Display Streamlit Table with custom Column Layout
+        # Display Streamlit Table with Ticker in Column 2
         st.dataframe(
-            df_results[["Status", "Status & Signal", "Ticker", "Price", "20 EMA", "50 SMA", "200 EMA", "Dynamic Buffer", "Reason"]],
+            df_results[["Status & Signal", "Ticker", "Trigger Details"]],
             use_container_width=True,
             hide_index=True,
             column_config={
-                "Status": st.column_config.TextColumn("Status", help="🟢 Bullish | 🟡 Pullback/Warning | 🔴 Bearish | ⚪ Neutral", width="small"),
-                "Status & Signal": st.column_config.TextColumn("Combined Signal & Status", width="medium"),
-                "Ticker": st.column_config.TextColumn("Ticker", width="small"),
-                "Price": st.column_config.NumberColumn(format="$%.2f", help="Current Close Price"),
-                "20 EMA": st.column_config.NumberColumn(format="$%.2f"),
-                "50 SMA": st.column_config.NumberColumn(format="$%.2f"),
-                "200 EMA": st.column_config.NumberColumn(format="$%.2f"),
-                "Dynamic Buffer": st.column_config.TextColumn("Buffer", help="Effective volatility-adjusted buffer percentage"),
-                "Reason": st.column_config.TextColumn("Trigger Details / Flyover", help="Hover to view full execution reason and metrics"),
+                "Status & Signal": st.column_config.TextColumn(
+                    "Status & Signal", 
+                    width="medium",
+                    help="Execution state (🟢 Bullish, 🟡 Pullback/Warning, 🔴 Bearish, ⚪ Neutral)"
+                ),
+                "Ticker": st.column_config.TextColumn(
+                    "Ticker", 
+                    width="small"
+                ),
+                "Trigger Details": st.column_config.TextColumn(
+                    "Trigger Details", 
+                    width="large",
+                    help="Hover over any row cell to view full price, 20 EMA, 50 SMA, 200 EMA, and volatility buffer metrics"
+                ),
             }
         )
         
-        # Download CSV
-        csv = df_results.to_csv(index=False).encode('utf-8')
+        # Download CSV with all underlying metrics included
+        csv_df = df_results.drop(columns=["Status Internal"])
+        csv = csv_df.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Download CSV Report",
             data=csv,
