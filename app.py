@@ -1,7 +1,7 @@
 """
 Repository: 200 Day Triggers
 Description: Streamlit Web Application for Macro (200 EMA) and Short-Term (20 EMA / 50 SMA)
-             Trend & Volatility Screening with ATR Dynamic Buffers.
+             Trend & Volatility Screening with ATR Dynamic Buffers and URL Parameter Persistence.
 """
 
 import streamlit as st
@@ -128,6 +128,8 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                 reason = f"Price crossed EMA but slope ({slope}) or buffer does not confirm exit/entry."
 
             results.append({
+                "Status": status,
+                "Status & Signal": f"{status} - {signal}",
                 "Ticker": ticker,
                 "Price": round(curr_price, 2),
                 "20 EMA": round(curr_ema20, 2),
@@ -137,8 +139,6 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                 "Dynamic Buffer": f"±{effective_buffer_pct*100:.1f}%",
                 "Short-Term Trend": short_term_momentum,
                 "50/200 Trend": ma_cross,
-                "Signal": signal,
-                "Status": status,
                 "Reason": reason
             })
             
@@ -152,11 +152,27 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
 st.title(f"📈 {REPO_NAME}")
 st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
+# --- URL Parameter Management ---
+DEFAULT_TICKER_STRING = "SPY, QQQ, GLD, BTC-USD, NVDA, AAPL, TLT, IWM"
+
+# Read tickers parameter from URL bar if present
+query_params = st.query_params
+initial_tickers = query_params.get("tickers", DEFAULT_TICKER_STRING)
+
 st.sidebar.header("Screener Configuration")
-default_tickers = "SPY, QQQ, GLD, BTC-USD, NVDA, AAPL, TLT, IWM"
-ticker_input = st.sidebar.text_area("Watchlist Tickers (comma-separated):", value=default_tickers)
+
+# Input field bound to initial_tickers value
+ticker_input = st.sidebar.text_area(
+    "Watchlist Tickers (comma-separated):", 
+    value=initial_tickers,
+    help="Changes to this list automatically update your browser URL so you can bookmark/favorite your custom watchlist."
+)
 
 buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100
+
+# Update URL query parameters based on current user input
+clean_ticker_str = ", ".join([t.strip().upper() for t in ticker_input.split(",") if t.strip()])
+st.query_params["tickers"] = clean_ticker_str
 
 if st.sidebar.button("Run Screener", type="primary") or "ran_once" not in st.session_state:
     st.session_state["ran_once"] = True
@@ -176,16 +192,21 @@ if st.sidebar.button("Run Screener", type="primary") or "ran_once" not in st.ses
         
         st.divider()
         
-        # Interactive Table Display
+        # Display Streamlit Table with custom Column Layout
         st.dataframe(
-            df_results,
+            df_results[["Status", "Status & Signal", "Ticker", "Price", "20 EMA", "50 SMA", "200 EMA", "Dynamic Buffer", "Reason"]],
             use_container_width=True,
             hide_index=True,
             column_config={
-                "Price": st.column_config.NumberColumn(format="$%.2f"),
+                "Status": st.column_config.TextColumn("Status", help="🟢 Bullish | 🟡 Pullback/Warning | 🔴 Bearish | ⚪ Neutral", width="small"),
+                "Status & Signal": st.column_config.TextColumn("Combined Signal & Status", width="medium"),
+                "Ticker": st.column_config.TextColumn("Ticker", width="small"),
+                "Price": st.column_config.NumberColumn(format="$%.2f", help="Current Close Price"),
                 "20 EMA": st.column_config.NumberColumn(format="$%.2f"),
                 "50 SMA": st.column_config.NumberColumn(format="$%.2f"),
                 "200 EMA": st.column_config.NumberColumn(format="$%.2f"),
+                "Dynamic Buffer": st.column_config.TextColumn("Buffer", help="Effective volatility-adjusted buffer percentage"),
+                "Reason": st.column_config.TextColumn("Trigger Details / Flyover", help="Hover to view full execution reason and metrics"),
             }
         )
         
