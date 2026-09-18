@@ -181,88 +181,97 @@ st.title(f"📈 {REPO_NAME}")
 st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 # --- URL Parameter Management ---
-DEFAULT_TICKER_STRING = "SPY, QQQ, GLD, BTC-USD, NVDA, AAPL, TLT, IWM"
-
+# Read tickers parameter from URL bar if present, default to empty string
 query_params = st.query_params
-initial_tickers = query_params.get("tickers", DEFAULT_TICKER_STRING)
+initial_tickers = query_params.get("tickers", "")
 
 st.sidebar.header("Screener Configuration")
 
 ticker_input = st.sidebar.text_area(
     "Watchlist Tickers (comma-separated):", 
     value=initial_tickers,
-    help="Changes to this list automatically update your browser URL so you can bookmark/favorite your custom watchlist."
+    placeholder="e.g. SPY, QQQ, NVDA, BTC-USD",
+    help="Type tickers here and run. The URL bar will update so you can bookmark this custom run in your browser."
 )
 
 buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100
 rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", min_value=1.0, max_value=2.5, value=1.25, step=0.05)
 
+# Sync user input with browser URL parameters
 clean_ticker_str = ", ".join([t.strip().upper() for t in ticker_input.split(",") if t.strip()])
-st.query_params["tickers"] = clean_ticker_str
+if clean_ticker_str:
+    st.query_params["tickers"] = clean_ticker_str
 
-if st.sidebar.button("Run Screener", type="primary") or "ran_once" not in st.session_state:
+# Execution Trigger
+run_screener = st.sidebar.button("Run Screener", type="primary")
+
+if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
     st.session_state["ran_once"] = True
     
     tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
     
-    with st.spinner("Fetching market data and calculating indicators..."):
-        df_results = analyze_enhanced_sma_strategy(
-            tickers_list, 
-            default_buffer_pct=buffer_setting,
-            rvol_threshold=rvol_setting
-        )
-        
-    if not df_results.empty:
-        # Key Summary Metrics
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Tickers", len(df_results))
-        col2.metric("Full Bullish Signals", len(df_results[df_results["Status & Signal"].str.contains("Bullish")]))
-        col3.metric("Macro Bull (Pullback)", len(df_results[df_results["Status & Signal"].str.contains("Pullback")]))
-        col4.metric("Bearish Signals", len(df_results[df_results["Status & Signal"].str.contains("Bearish")]))
-        
-        st.divider()
-        
-        # Display Streamlit Table
-        st.dataframe(
-            df_results[["Status & Signal", "Ticker", "Trigger Details"]],
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Status & Signal": st.column_config.TextColumn(
-                    "Status & Signal", 
-                    width="small",
-                    help="Short trend status. See reference legend below for full definitions."
-                ),
-                "Ticker": st.column_config.TextColumn(
-                    "Ticker", 
-                    width="small"
-                ),
-                "Trigger Details": st.column_config.TextColumn(
-                    "Trigger Details", 
-                    width="large",
-                    help="Hover over any cell to view full price, RVOL, 20 EMA, 50 SMA, 200 EMA, and volatility buffer metrics"
-                ),
-            }
-        )
-        
-        # Reference Legend
-        with st.expander("📖 Signal Reference Guide", expanded=False):
-            st.markdown(f"""
-            * **🟢 Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term momentum MAs are aligned, and RVOL confirms institutional participation ($\ge {rvol_setting:.2f}\text{{x}}$).
-            * **🟡 Pullback (MACRO BULL / WAIT FOR ENTRY):** Macro trend remains long-term bullish (>200 EMA), but price is pulling back below short-term MAs. Wait for momentum reclaim before entering.
-            * **🟡 Warning (BULLISH / LOW VOLUME or CAUTION):** Price is above targets, but RVOL is below the ${rvol_setting:.2f}\text{{x}}$ threshold, signaling low-volume breakout risk; or slope/buffer conditions are incomplete.
-            * **⚪ Neutral (NOISE BUFFER ZONE):** Price is consolidating within the ± dynamic buffer zone around the 200 EMA. Avoid buying or selling to prevent whipsaws.
-            * **🔴 Bearish (SELL / CASH OUT):** Price is below the 200 EMA (minus dynamic buffer) with a downward slope.
-            """)
-        
-        # Download CSV
-        csv = df_results.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Download CSV Report",
-            data=csv,
-            file_name="200_day_triggers_report.csv",
-            mime="text/csv"
-        )
+    if tickers_list:
+        with st.spinner("Fetching market data and calculating indicators..."):
+            df_results = analyze_enhanced_sma_strategy(
+                tickers_list, 
+                default_buffer_pct=buffer_setting,
+                rvol_threshold=rvol_setting
+            )
+            
+        if not df_results.empty:
+            # Key Summary Metrics
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Total Tickers", len(df_results))
+            col2.metric("Full Bullish Signals", len(df_results[df_results["Status & Signal"].str.contains("Bullish")]))
+            col3.metric("Macro Bull (Pullback)", len(df_results[df_results["Status & Signal"].str.contains("Pullback")]))
+            col4.metric("Bearish Signals", len(df_results[df_results["Status & Signal"].str.contains("Bearish")]))
+            
+            st.divider()
+            
+            # Display Streamlit Table
+            st.dataframe(
+                df_results[["Status & Signal", "Ticker", "Trigger Details"]],
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Status & Signal": st.column_config.TextColumn(
+                        "Status & Signal", 
+                        width="small",
+                        help="Short trend status. See reference legend below for full definitions."
+                    ),
+                    "Ticker": st.column_config.TextColumn(
+                        "Ticker", 
+                        width="small"
+                    ),
+                    "Trigger Details": st.column_config.TextColumn(
+                        "Trigger Details", 
+                        width="large",
+                        help="Hover over any cell to view full price, RVOL, 20 EMA, 50 SMA, 200 EMA, and volatility buffer metrics"
+                    ),
+                }
+            )
+            
+            # Reference Legend
+            with st.expander("📖 Signal Reference Guide", expanded=False):
+                st.markdown(f"""
+                * **🟢 Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term momentum MAs are aligned, and RVOL confirms institutional participation ($\ge {rvol_setting:.2f}\text{{x}}$).
+                * **🟡 Pullback (MACRO BULL / WAIT FOR ENTRY):** Macro trend remains long-term bullish (>200 EMA), but price is pulling back below short-term MAs. Wait for momentum reclaim before entering.
+                * **🟡 Warning (BULLISH / LOW VOLUME or CAUTION):** Price is above targets, but RVOL is below the ${rvol_setting:.2f}\text{{x}}$ threshold, signaling low-volume breakout risk; or slope/buffer conditions are incomplete.
+                * **⚪ Neutral (NOISE BUFFER ZONE):** Price is consolidating within the ± dynamic buffer zone around the 200 EMA. Avoid buying or selling to prevent whipsaws.
+                * **🔴 Bearish (SELL / CASH OUT):** Price is below the 200 EMA (minus dynamic buffer) with a downward slope.
+                """)
+            
+            # Download CSV
+            csv = df_results.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download CSV Report",
+                data=csv,
+                file_name="200_day_triggers_report.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("No results returned for the provided tickers.")
     else:
-        st.info("No results to display.")
-          
+        st.warning("Please enter at least one ticker in the sidebar to run the screener.")
+else:
+    st.info("👈 Enter your tickers in the sidebar and click 'Run Screener' to analyze.")
