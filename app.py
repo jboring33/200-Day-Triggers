@@ -2,7 +2,7 @@
 Repository: 200 Day Triggers
 Description: Streamlit Web Application for Macro (200 EMA) and Short-Term (20 EMA / 50 SMA)
              Trend & Volatility Screening with ATR Dynamic Buffers, ATR% Filters, RVOL Volume Confirmation,
-             Directional Volume Labels, Flyover Tooltips, and URL Parameter Persistence.
+             Directional Volume Labels, Flyover Tooltips, Parameter Tuning Guidance, and URL Parameter Persistence.
 """
 
 import streamlit as st
@@ -158,7 +158,7 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             # Construct comprehensive Flyover detail string
             flyover_summary = (
                 f"[{full_signal}] {reason} | Price: ${curr_price:.2f} | {vol_str} | "
-                f"ATR%: {atr_pct:.2f}% | 20 EMA: ${curr_ema20:.2f} | 50 SMA: ${curr_sma50:.2f} | "
+                f"ATR%: {atr_pct:.2f}% | 20 EMA: ${curr_ema20:.2f} \vert{} 50 SMA:${curr_sma50:.2f} | "
                 f"200 EMA: ${curr_ema200:.2f} | Dist 200EMA: {pct_from_ema200:+.2f}% | "
                 f"Buffer: ±{effective_buffer_pct*100:.1f}% | Short Trend: {short_term_momentum} | Cross: {ma_cross}"
             )
@@ -210,7 +210,7 @@ ticker_input = st.sidebar.text_area(
 
 buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100
 
-# Min RVOL slider now allows values down to 0.1x for testing low-volume conditions
+# Min RVOL slider allows values down to 0.1x for testing low-volume conditions
 rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", min_value=0.1, max_value=2.5, value=1.25, step=0.05)
 
 # Optional ATR% minimum volatility filter
@@ -282,14 +282,39 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
                 }
             )
             
-            # Reference Legend
-            with st.expander("📖 Signal Reference Guide", expanded=False):
+            # Reference Legend & Parameter Guidance
+            with st.expander("📖 Signal Reference Guide & Parameter Tuning", expanded=False):
                 st.markdown(f"""
-                * **🟢 Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term momentum MAs are aligned, and RVOL confirms **STRONG BUYING VOLUME** ($\ge {rvol_setting:.2f}\text{{x}}$).
+                ### 🚥 Signal Definitions
+                * **🟢 Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term MAs are aligned, and RVOL confirms **STRONG BUYING VOLUME** ($\ge {rvol_setting:.2f}\\text{{x}}$).
                 * **🟡 Pullback (MACRO BULL / WAIT FOR ENTRY):** Macro trend remains long-term bullish (>200 EMA), but price is pulling back below short-term MAs. Wait for momentum reclaim before entering.
-                * **🟡 Warning (BULLISH / LOW VOLUME or CAUTION):** Price is above targets, but volume is **LOW VOLUME** (below the ${rvol_setting:.2f}\text{{x}}$ threshold), signaling low-volume breakout risk; or slope/buffer conditions are incomplete.
+                * **🟡 Warning (BULLISH / LOW VOLUME or CAUTION):** Price is above targets, but volume status is **LOW VOLUME** (below the ${rvol_setting:.2f}\\text{{x}}$ threshold), signaling low-volume breakout risk; or slope/buffer conditions are incomplete.
                 * **⚪ Neutral (NOISE BUFFER ZONE):** Price is consolidating within the ± dynamic buffer zone around the 200 EMA. Avoid buying or selling to prevent whipsaws.
                 * **🔴 Bearish (SELL / CASH OUT):** Price is below the 200 EMA (minus dynamic buffer) with a downward slope and **STRONG SELLING VOLUME**.
+
+                ---
+
+                ### 🎛️ How & When to Tune Screener Parameters
+
+                #### 1. Base Buffer Noise Filter (%) `[Current: {buffer_setting*100:.1f}%]`
+                *Calculates a structural boundary around the 200 EMA (expanded dynamically using ATR) to eliminate false breakout whipsaws.*
+                * **Lower it to 1.0%–1.5% when:** Trading **low-beta mega-caps** (e.g., `AAPL`, `MSFT`) or **broad market indices** (`SPY`, `IVV`) during quiet, low-volatility market regimes where price action is tight.
+                * **Keep default at 2.0% for:** General equity screening across mixed large-cap and mid-cap stocks.
+                * **Raise it to 3.0%–5.0% when:** Screening **high-beta momentum stocks** (`NVDA`, `TSLA`), **crypto/crypto-miners** (`BTC-USD`, `MSTR`), or during **high VIX / market crash regimes** where daily price swings are wider.
+
+                #### 2. Min RVOL Breakout Confirmation (x) `[Current: {rvol_setting:.2f}x]`
+                *Measures institutional participation by comparing current volume against the 20-day moving average volume.*
+                * **Lower it to 0.1x–1.0x when:** 
+                  * Testing screeners off-hours, on low-volume holiday sessions, or during summer lulls.
+                  * Screening **large-cap broad market ETFs** (`SPY`, `QQQ`, `VEA`), which naturally trade with smoother relative volume ratios than individual stocks.
+                * **Keep default at 1.25x for:** Standard breakout/breakdown validation across individual stocks.
+                * **Raise it to 1.5x–2.0x when:** Filtering strictly for **high-conviction institutional breakouts**, earnings release plays, or news-driven momentum expansions.
+
+                #### 3. Min Daily Volatility / ATR (%) `[Current: {min_atr_setting:.2f}%]`
+                *Filters out slow-moving or low-range assets that lack the daily price action required for tactical swings.*
+                * **Set to 0.0% (Disabled) when:** Screening conservative core index funds, broad market ETFs (`SPY`, `BND`), or dividend assets (`SPHD`, `SCHD`).
+                * **Raise to 1.5%–2.0% when:** Screening **standard growth stocks & sector ETFs** (`XLK`, `XBI`, `SMH`) to filter out low-volatility "sloggers" that tie up capital without moving.
+                * **Raise to 3.0%+ when:** Screening exclusively for **high-volatility swing setups**, leveraged ETFs (`TQQQ`, `SOXL`, `SQQQ`), or crypto assets.
                 """)
             
             # Download CSV
