@@ -155,7 +155,7 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                 full_signal = "WATCH / CAUTION"
                 reason = f"Price crossed EMA but slope ({slope}) or buffer does not confirm exit/entry."
 
-            # Construct summary string with pure ASCII characters
+            # Construct summary string with standard text dividers
             flyover_summary = (
                 f"[{full_signal}] {reason} | Price: ${curr_price:.2f} | {vol_str} | "
                 f"ATR%: {atr_pct:.2f}% | 20 EMA: ${curr_ema20:.2f} \vert{} 50 SMA:${curr_sma50:.2f} | "
