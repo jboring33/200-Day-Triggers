@@ -212,8 +212,24 @@ ticker_input = st.sidebar.text_area(
     help="Type tickers here and run. The URL bar will update so you can bookmark this custom run in your browser."
 )
 
-buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100
-rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", min_value=0.1, max_value=2.5, value=1.25, step=0.05)
+buffer_setting = st.sidebar.slider(
+    "Base Buffer Noise Filter (%)", 
+    min_value=1.0, 
+    max_value=5.0, 
+    value=2.0, 
+    step=0.5,
+    help="Sets the percentage dead zone around the 200 EMA to avoid false breakout whipsaws. Compared automatically against 1.5x ATR%."
+) / 100
+
+rvol_setting = st.sidebar.slider(
+    "Min RVOL Breakout Confirmation (x)", 
+    min_value=0.1, 
+    max_value=2.5, 
+    value=1.25, 
+    step=0.05,
+    help="Minimum Relative Volume required to confirm trend breakout strength (Current Volume / 20-Day SMA Volume)."
+)
+
 min_atr_setting = st.sidebar.slider(
     "Min Daily Volatility / ATR (%)", 
     min_value=0.0, 
@@ -278,7 +294,6 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
             )
             
             with st.expander("📖 Signal Reference Guide & Parameter Tuning", expanded=False):
-                # Formatted via .format() to avoid standard f-string macro/brace expansion conflicts
                 guide_template = """
 ### Signal Definitions
 * **Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term MAs are aligned, and RVOL confirms **STRONG BUYING VOLUME** (>= {rvol:.2f}x).
@@ -300,6 +315,11 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
 * **WHEN TO RAISE (3.0% - 5.0%):**
   * **High-Beta & Crypto Assets:** High-volatility growth stocks (NVDA, TSLA) or crypto (BTC, ETH) routinely swing 2%-4% in a single day. A tight buffer generates constant false buy/sell signals.
   * **Market Volatility Spikes:** During macro panics or high VIX regimes (>25), expansion of noise requires wider margins.
+* **ASSET CLASS SPECIFICS & ASYMMETRIC ADJUSTMENTS:**
+  * **Conservative Fixed Income & Cash Alternatives (SGOV, JPST, USMV):** Set buffer low (1.0%). These assets move in fractions of a percent, so wider buffers will obscure true signals.
+  * **Securitized Debt & Credit ETFs (JAAA, JBBB, SCYB):** Use 1.0% - 1.5% base buffer. Their volatility is driven by credit spread shifts rather than daily equity momentum.
+  * **High-Yield & Value Equity (SPHD):** Use 1.5% - 2.0% base buffer to accommodate dividend-driven yield rotation while avoiding noise.
+  * **Bull vs. Bear Asymmetric Buffer Strategy:** Consider using a narrower buffer on upside breakouts (e.g., 1.5%) to enter trends early, but a wider buffer on downside tests (e.g., 2.5% - 3.0%) to prevent getting shaken out of core macro uptrends during temporary market drawdowns.
 
 #### 2. Min RVOL Breakout Confirmation (x) [Current: {rvol:.2f}x]
 * **WHAT IT IS:** Relative Volume (RVOL) compares current trading volume against the asset's 20-day average volume. A value of 1.25x means today's volume is 25% higher than normal.
@@ -309,6 +329,10 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
   * **Broad Market ETFs & Ultra-Short Fixed Income:** Liquidity-rich ETFs (SPY, QQQ, SGOV) move with index rebalancing rather than retail volume spikes, meaning RVOL rarely spikes as aggressively as in individual equities.
 * **WHEN TO RAISE (1.5x - 2.5x):**
   * **Earning Plays & High-Conviction Breakouts:** When filtering exclusively for explosive, high-confidence momentum movers where major institutional accumulation is required.
+* **ASSET CLASS SPECIFICS & VOLUME CONFIRMATION RULES:**
+  * **Ultra-Short & Senior Loan ETFs (SGOV, JPST, JAAA):** Set RVOL threshold to 0.1x - 0.5x (effectively disabling it). Volume in institutional credit ETFs reflects liquidity roll rather than directional accumulation; requiring high RVOL will cause false negative "Low Volume" warnings.
+  * **High-Yield & Mezzanine Debt (JBBB, SCYB):** Set RVOL to 1.0x. Moderate volume confirmation ensures liquidity is present without filtering out valid credit market trends.
+  * **Equities & Dividend ETFs (USMV, SPHD):** Use 1.25x - 1.50x. High volume is essential to confirm institutional buying/selling pressure on price breakouts.
 
 #### 3. Min Daily Volatility / ATR (%) [Current: {min_atr:.2f}%]
 * **WHAT IT IS:** Uses the 14-day Average True Range expressed as a percentage of share price to measure daily percentage movement range.
@@ -319,6 +343,12 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
   * **Tactical Equity & Swing Screening:** When seeking liquid growth stocks or sector ETFs that move enough daily to justify tactical swing positioning.
 * **WHEN TO RAISE (3.0%+):**
   * **High-Beta / Momentum Trading:** When filtering strictly for rapid movers, leveraged ETFs (TQQQ, SOXL), or crypto assets.
+* **ASSET CLASS BENCHMARKS & VOLATILITY EXPECTATIONS:**
+  * **Ultra-Short Cash Reserves (SGOV, JPST):** Typical ATR% is 0.01% - 0.05%. Keep filter set to 0.0%.
+  * **AAA/BBB CLOs & Securitized Credit (JAAA, JBBB):** Typical ATR% is 0.10% - 0.40%. Keep filter at 0.0% or set under 0.20%.
+  * **Low-Volatility Equity (USMV, SPHD):** Typical ATR% is 0.50% - 1.00%. Use 0.50% filter to eliminate bond-like stagnation while capturing equity trends.
+  * **Broad Market Indexes (SPY, QQQ):** Typical ATR% is 0.80% - 1.50%. Set to 0.75% - 1.00% to screen for active trend regimes.
+  * **Individual Equities & High-Beta Momentum:** Typical ATR% is 2.00% - 5.00%+. Set to 2.00%+ when filtering exclusively for high-velocity trade candidates.
 """
                 st.markdown(guide_template.format(
                     rvol=rvol_setting,
