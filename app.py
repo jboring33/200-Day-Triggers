@@ -155,7 +155,7 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                 full_signal = "WATCH / CAUTION"
                 reason = f"Price crossed EMA but slope ({slope}) or buffer does not confirm exit/entry."
 
-            # Construct comprehensive Flyover detail string (Clean standard pipe symbols, no backslashes)
+            # Construct summary string with plain text dividers
             flyover_summary = (
                 f"[{full_signal}] {reason} | Price: ${curr_price:.2f} | {vol_str} | "
                 f"ATR%: {atr_pct:.2f}% | 20 EMA: ${curr_ema20:.2f} \vert{} 50 SMA:${curr_sma50:.2f} | "
@@ -167,7 +167,6 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                 "Status & Signal": status_short,
                 "Ticker": ticker,
                 "Trigger Details": flyover_summary,
-                # Retain raw metrics for CSV export downloading and UI filtering
                 "Full Signal": full_signal,
                 "Price": round(curr_price, 2),
                 "RVOL": round(rvol, 2),
@@ -195,7 +194,6 @@ st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 query_params = st.query_params
 url_tickers = query_params.get("tickers", "")
 
-# Initialize session state widget key with browser URL state
 if "watchlist_input" not in st.session_state:
     st.session_state["watchlist_input"] = url_tickers
 
@@ -209,11 +207,7 @@ ticker_input = st.sidebar.text_area(
 )
 
 buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100
-
-# Min RVOL slider allows values down to 0.1x for testing low-volume conditions
 rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", min_value=0.1, max_value=2.5, value=1.25, step=0.05)
-
-# Optional ATR% minimum volatility filter
 min_atr_setting = st.sidebar.slider(
     "Min Daily Volatility / ATR (%)", 
     min_value=0.0, 
@@ -223,12 +217,10 @@ min_atr_setting = st.sidebar.slider(
     help="Filters out assets whose 14-day Average True Range is below this percentage of price."
 )
 
-# Sync user input string with browser URL parameters
 clean_ticker_str = ", ".join([t.strip().upper() for t in ticker_input.split(",") if t.strip()])
 if clean_ticker_str:
     st.query_params["tickers"] = clean_ticker_str
 
-# Execution Trigger
 run_screener = st.sidebar.button("Run Screener", type="primary")
 
 if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
@@ -245,12 +237,10 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
             )
             
         if not df_results.empty:
-            # Apply ATR% minimum volatility filter if set above 0%
             if min_atr_setting > 0:
                 df_results = df_results[df_results["ATR (%)"] >= min_atr_setting].reset_index(drop=True)
             
         if not df_results.empty:
-            # Key Summary Metrics
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("Total Tickers", len(df_results))
             col2.metric("Full Bullish Signals", len(df_results[df_results["Status & Signal"].str.contains("Bullish")]))
@@ -259,7 +249,6 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
             
             st.divider()
             
-            # Display Streamlit Table
             st.dataframe(
                 df_results[["Status & Signal", "Ticker", "Trigger Details"]],
                 use_container_width=True,
@@ -282,7 +271,6 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
                 }
             )
             
-            # Reference Legend & Parameter Guidance
             with st.expander("📖 Signal Reference Guide & Parameter Tuning", expanded=False):
                 st.markdown(f"""
                 ### 🚥 Signal Definitions
@@ -317,7 +305,6 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
                 * **Raise to 3.0%+ when:** Screening exclusively for **high-volatility swing setups**, leveraged ETFs (`TQQQ`, `SOXL`, `SQQQ`), or crypto assets.
                 """)
             
-            # Download CSV
             csv = df_results.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Download CSV Report",
