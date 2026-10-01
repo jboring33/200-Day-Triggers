@@ -208,7 +208,7 @@ ticker_input = st.sidebar.text_area(
 )
 
 buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100
-rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", min_value=1.0, max_value=2.5, value=1.25, step=0.05)
+rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", min_value=0.5, max_value=2.5, value=1.25, step=0.05)
 
 # Sync user input string with browser URL parameters
 clean_ticker_str = ", ".join([t.strip().upper() for t in ticker_input.split(",") if t.strip()])
