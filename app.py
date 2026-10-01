@@ -155,12 +155,12 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                 full_signal = "WATCH / CAUTION"
                 reason = f"Price crossed EMA but slope ({slope}) or buffer does not confirm exit/entry."
 
-            # Construct comprehensive Flyover detail string
+            # Construct comprehensive Flyover detail string (Clean Standard Symbols)
             flyover_summary = (
                 f"[{full_signal}] {reason} | Price: ${curr_price:.2f} | {vol_str} | "
                 f"ATR%: {atr_pct:.2f}% | 20 EMA: ${curr_ema20:.2f} \vert{} 50 SMA:${curr_sma50:.2f} | "
                 f"200 EMA: ${curr_ema200:.2f} | Dist 200EMA: {pct_from_ema200:+.2f}% | "
-                f"Buffer: ±{effective_buffer_pct*100:.1f}% | Short Trend: {short_term_momentum} | Cross: {ma_cross}"
+                f"Buffer: +/-{effective_buffer_pct*100:.1f}% | Short Trend: {short_term_momentum} | Cross: {ma_cross}"
             )
 
             results.append({
@@ -286,10 +286,10 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
             with st.expander("📖 Signal Reference Guide & Parameter Tuning", expanded=False):
                 st.markdown(f"""
                 ### 🚥 Signal Definitions
-                * **🟢 Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term MAs are aligned, and RVOL confirms **STRONG BUYING VOLUME** (≥ {rvol_setting:.2f}x).
+                * **🟢 Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term MAs are aligned, and RVOL confirms **STRONG BUYING VOLUME** (>= {rvol_setting:.2f}x).
                 * **🟡 Pullback (MACRO BULL / WAIT FOR ENTRY):** Macro trend remains long-term bullish (>200 EMA), but price is pulling back below short-term MAs. Wait for momentum reclaim before entering.
                 * **🟡 Warning (BULLISH / LOW VOLUME or CAUTION):** Price is above targets, but volume status is **LOW VOLUME** (below the {rvol_setting:.2f}x threshold), signaling low-volume breakout risk; or slope/buffer conditions are incomplete.
-                * **⚪ Neutral (NOISE BUFFER ZONE):** Price is consolidating within the ± dynamic buffer zone around the 200 EMA. Avoid buying or selling to prevent whipsaws.
+                * **⚪ Neutral (NOISE BUFFER ZONE):** Price is consolidating within the +/- dynamic buffer zone around the 200 EMA. Avoid buying or selling to prevent whipsaws.
                 * **🔴 Bearish (SELL / CASH OUT):** Price is below the 200 EMA (minus dynamic buffer) with a downward slope and **STRONG SELLING VOLUME**.
 
                 ---
