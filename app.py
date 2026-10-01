@@ -286,9 +286,9 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
             with st.expander("📖 Signal Reference Guide & Parameter Tuning", expanded=False):
                 st.markdown(f"""
                 ### 🚥 Signal Definitions
-                * **🟢 Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term MAs are aligned, and RVOL confirms **STRONG BUYING VOLUME** ($\ge {rvol_setting:.2f}\\text{{x}}$).
+                * **🟢 Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term MAs are aligned, and RVOL confirms **STRONG BUYING VOLUME** (≥ {rvol_setting:.2f}x).
                 * **🟡 Pullback (MACRO BULL / WAIT FOR ENTRY):** Macro trend remains long-term bullish (>200 EMA), but price is pulling back below short-term MAs. Wait for momentum reclaim before entering.
-                * **🟡 Warning (BULLISH / LOW VOLUME or CAUTION):** Price is above targets, but volume status is **LOW VOLUME** (below the ${rvol_setting:.2f}\\text{{x}}$ threshold), signaling low-volume breakout risk; or slope/buffer conditions are incomplete.
+                * **🟡 Warning (BULLISH / LOW VOLUME or CAUTION):** Price is above targets, but volume status is **LOW VOLUME** (below the {rvol_setting:.2f}x threshold), signaling low-volume breakout risk; or slope/buffer conditions are incomplete.
                 * **⚪ Neutral (NOISE BUFFER ZONE):** Price is consolidating within the ± dynamic buffer zone around the 200 EMA. Avoid buying or selling to prevent whipsaws.
                 * **🔴 Bearish (SELL / CASH OUT):** Price is below the 200 EMA (minus dynamic buffer) with a downward slope and **STRONG SELLING VOLUME**.
 
