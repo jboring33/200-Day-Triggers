@@ -1,7 +1,7 @@
 """
 Repository: 200 Day Triggers
 Description: Streamlit Web Application for Macro (200 EMA) and Short-Term (20 EMA / 50 SMA)
-             Trend & Volatility Screening with ATR Dynamic Buffers, RVOL Volume Confirmation,
+             Trend & Volatility Screening with ATR Dynamic Buffers, ATR% Filters, RVOL Volume Confirmation,
              Directional Volume Labels, Flyover Tooltips, and URL Parameter Persistence.
 """
 
@@ -33,7 +33,7 @@ def calculate_atr(df, window=14):
     return tr.rolling(window=window).mean()
 
 def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5, default_buffer_pct=0.02, rvol_threshold=1.25):
-    """Evaluates tickers across Macro (200 EMA), Short-Term (20 EMA / 50 SMA) trends, and RVOL volume logic."""
+    """Evaluates tickers across Macro (200 EMA), Short-Term (20 EMA / 50 SMA) trends, ATR% metrics, and RVOL volume logic."""
     results = []
     
     for ticker in tickers:
@@ -77,10 +77,10 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             curr_sma200 = float(sma200.iloc[-1])
             prev_ema200 = float(ema200.iloc[-(slope_window + 1)])
             
-            # Dynamic Volatility Buffer
+            # Volatility Calculations (ATR & ATR%)
             atr = float(calculate_atr(df_clean).iloc[-1])
-            atr_pct = (atr / curr_price)
-            effective_buffer_pct = max(default_buffer_pct, atr_pct * 1.5)
+            atr_pct = (atr / curr_price) * 100  # ATR as a percentage of price
+            effective_buffer_pct = max(default_buffer_pct, (atr / curr_price) * 1.5)
             
             upper_threshold = curr_ema200 * (1 + effective_buffer_pct)
             lower_threshold = curr_ema200 * (1 - effective_buffer_pct)
@@ -158,19 +158,20 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             # Construct comprehensive Flyover detail string
             flyover_summary = (
                 f"[{full_signal}] {reason} | Price: ${curr_price:.2f} | {vol_str} | "
-                f"20 EMA: ${curr_ema20:.2f} | 50 SMA: ${curr_sma50:.2f} | 200 EMA: ${curr_ema200:.2f} | "
-                f"Dist 200EMA: {pct_from_ema200:+.2f}% | Buffer: ±{effective_buffer_pct*100:.1f}% | "
-                f"Short Trend: {short_term_momentum} | Cross: {ma_cross}"
+                f"ATR%: {atr_pct:.2f}% | 20 EMA: ${curr_ema20:.2f} | 50 SMA: ${curr_sma50:.2f} | "
+                f"200 EMA: ${curr_ema200:.2f} | Dist 200EMA: {pct_from_ema200:+.2f}% | "
+                f"Buffer: ±{effective_buffer_pct*100:.1f}% | Short Trend: {short_term_momentum} | Cross: {ma_cross}"
             )
 
             results.append({
                 "Status & Signal": status_short,
                 "Ticker": ticker,
                 "Trigger Details": flyover_summary,
-                # Retain raw metrics for CSV export downloading
+                # Retain raw metrics for CSV export downloading and UI filtering
                 "Full Signal": full_signal,
                 "Price": round(curr_price, 2),
                 "RVOL": round(rvol, 2),
+                "ATR (%)": round(atr_pct, 2),
                 "Volume Label": vol_label,
                 "20 EMA": round(curr_ema20, 2),
                 "50 SMA": round(curr_sma50, 2),
@@ -208,7 +209,19 @@ ticker_input = st.sidebar.text_area(
 )
 
 buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100
-rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", min_value=0.5, max_value=2.5, value=1.25, step=0.05)
+
+# Min RVOL slider now allows values down to 0.1x for testing low-volume conditions
+rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", min_value=0.1, max_value=2.5, value=1.25, step=0.05)
+
+# Optional ATR% minimum volatility filter
+min_atr_setting = st.sidebar.slider(
+    "Min Daily Volatility / ATR (%)", 
+    min_value=0.0, 
+    max_value=5.0, 
+    value=0.0, 
+    step=0.25,
+    help="Filters out assets whose 14-day Average True Range is below this percentage of price."
+)
 
 # Sync user input string with browser URL parameters
 clean_ticker_str = ", ".join([t.strip().upper() for t in ticker_input.split(",") if t.strip()])
@@ -230,6 +243,11 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
                 default_buffer_pct=buffer_setting,
                 rvol_threshold=rvol_setting
             )
+            
+        if not df_results.empty:
+            # Apply ATR% minimum volatility filter if set above 0%
+            if min_atr_setting > 0:
+                df_results = df_results[df_results["ATR (%)"] >= min_atr_setting].reset_index(drop=True)
             
         if not df_results.empty:
             # Key Summary Metrics
@@ -259,7 +277,7 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
                     "Trigger Details": st.column_config.TextColumn(
                         "Trigger Details", 
                         width="large",
-                        help="Hover over any cell to view full price, RVOL, volume classification, 20 EMA, 50 SMA, 200 EMA, and volatility buffer metrics"
+                        help="Hover over any cell to view full price, RVOL, volume classification, ATR%, 20 EMA, 50 SMA, 200 EMA, and volatility buffer metrics"
                     ),
                 }
             )
@@ -283,7 +301,7 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
                 mime="text/csv"
             )
         else:
-            st.info("No results returned for the provided tickers.")
+            st.info("No tickers matched the current ATR% volatility filter criteria.")
     else:
         st.warning("Please enter at least one ticker in the sidebar to run the screener.")
 else:
