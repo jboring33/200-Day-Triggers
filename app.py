@@ -2,7 +2,7 @@
 Repository: 200 Day Triggers
 Description: Streamlit Web Application for Macro (200 EMA) and Short-Term (20 EMA / 50 SMA)
              Trend & Volatility Screening with ATR Dynamic Buffers, RVOL Volume Confirmation,
-             Flyover Tooltips, and URL Parameter Persistence.
+             Directional Volume Labels, Flyover Tooltips, and URL Parameter Persistence.
 """
 
 import streamlit as st
@@ -118,6 +118,7 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             else:
                 vol_label = "HIGH VOLUME" if rvol_confirmed else "LOW VOLUME"
 
+            # Dynamically format vol_str using vol_label
             vol_str = f"RVOL: {rvol:.2f}x ({vol_label})"
             pct_from_ema200 = ((curr_price - curr_ema200) / curr_ema200) * 100
             
@@ -127,11 +128,11 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                     if rvol_confirmed:
                         status_short = "🟢 Bullish"
                         full_signal = "BUY / BULLISH HOLD"
-                        reason = f"Price > {effective_buffer_pct*100:.1f}% buffer above 200 EMA with full short-term momentum & strong buying volume ({rvol:.2f}x)."
+                        reason = f"Price > {effective_buffer_pct*100:.1f}% buffer above 200 EMA with full short-term momentum & {vol_label.lower()} ({rvol:.2f}x)."
                     else:
                         status_short = "🟡 Warning"
                         full_signal = "BULLISH / LOW VOLUME"
-                        reason = f"Price > 200 EMA buffer & short MAs aligned, but RVOL ({rvol:.2f}x) is below {rvol_threshold}x threshold."
+                        reason = f"Price > 200 EMA buffer & short MAs aligned, but volume status is {vol_label} (RVOL: {rvol:.2f}x < {rvol_threshold:.2f}x)."
                 else:
                     status_short = "🟡 Pullback"
                     full_signal = "MACRO BULL / WAIT FOR ENTRY"
@@ -140,11 +141,11 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                 if rvol_confirmed:
                     status_short = "🔴 Bearish"
                     full_signal = "SELL / CASH OUT"
-                    reason = f"Price < {effective_buffer_pct*100:.1f}% buffer below 200 EMA on heavy selling volume ({rvol:.2f}x) & slope is DOWN."
+                    reason = f"Price < {effective_buffer_pct*100:.1f}% buffer below 200 EMA on {vol_label.lower()} ({rvol:.2f}x) & slope is DOWN."
                 else:
                     status_short = "🔴 Bearish"
                     full_signal = "SELL / LOW VOL DOWN"
-                    reason = f"Price < {effective_buffer_pct*100:.1f}% buffer below 200 EMA & slope DOWN (RVOL: {rvol:.2f}x)."
+                    reason = f"Price < {effective_buffer_pct*100:.1f}% buffer below 200 EMA & slope DOWN (RVOL: {rvol:.2f}x, {vol_label})."
             elif lower_threshold <= curr_price <= upper_threshold:
                 status_short = "⚪ Neutral"
                 full_signal = "NOISE BUFFER ZONE"
@@ -170,6 +171,7 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                 "Full Signal": full_signal,
                 "Price": round(curr_price, 2),
                 "RVOL": round(rvol, 2),
+                "Volume Label": vol_label,
                 "20 EMA": round(curr_ema20, 2),
                 "50 SMA": round(curr_sma50, 2),
                 "200 EMA": round(curr_ema200, 2),
@@ -192,7 +194,7 @@ st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 query_params = st.query_params
 url_tickers = query_params.get("tickers", "")
 
-# Initialize or synchronize session state widget key with browser URL state
+# Initialize session state widget key with browser URL state
 if "watchlist_input" not in st.session_state:
     st.session_state["watchlist_input"] = url_tickers
 
@@ -257,7 +259,7 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
                     "Trigger Details": st.column_config.TextColumn(
                         "Trigger Details", 
                         width="large",
-                        help="Hover over any cell to view full price, RVOL, 20 EMA, 50 SMA, 200 EMA, and volatility buffer metrics"
+                        help="Hover over any cell to view full price, RVOL, volume classification, 20 EMA, 50 SMA, 200 EMA, and volatility buffer metrics"
                     ),
                 }
             )
@@ -265,11 +267,11 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
             # Reference Legend
             with st.expander("📖 Signal Reference Guide", expanded=False):
                 st.markdown(f"""
-                * **🟢 Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term momentum MAs are aligned, and RVOL confirms strong buying volume ($\ge {rvol_setting:.2f}\text{{x}}$).
+                * **🟢 Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term momentum MAs are aligned, and RVOL confirms **STRONG BUYING VOLUME** ($\ge {rvol_setting:.2f}\text{{x}}$).
                 * **🟡 Pullback (MACRO BULL / WAIT FOR ENTRY):** Macro trend remains long-term bullish (>200 EMA), but price is pulling back below short-term MAs. Wait for momentum reclaim before entering.
-                * **🟡 Warning (BULLISH / LOW VOLUME or CAUTION):** Price is above targets, but RVOL is below the ${rvol_setting:.2f}\text{{x}}$ threshold, signaling low-volume breakout risk; or slope/buffer conditions are incomplete.
+                * **🟡 Warning (BULLISH / LOW VOLUME or CAUTION):** Price is above targets, but volume is **LOW VOLUME** (below the ${rvol_setting:.2f}\text{{x}}$ threshold), signaling low-volume breakout risk; or slope/buffer conditions are incomplete.
                 * **⚪ Neutral (NOISE BUFFER ZONE):** Price is consolidating within the ± dynamic buffer zone around the 200 EMA. Avoid buying or selling to prevent whipsaws.
-                * **🔴 Bearish (SELL / CASH OUT):** Price is below the 200 EMA (minus dynamic buffer) with a downward slope.
+                * **🔴 Bearish (SELL / CASH OUT):** Price is below the 200 EMA (minus dynamic buffer) with a downward slope and **STRONG SELLING VOLUME**.
                 """)
             
             # Download CSV
