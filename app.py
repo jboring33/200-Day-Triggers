@@ -110,16 +110,24 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             else:
                 short_term_momentum = "PULLBACK (Below 20 EMA / Above 50 SMA)"
                 
-            # Signal Logic with RVOL Confirmation
+            # Directional Volume Labeling
+            if curr_price > upper_threshold and above_20_ema and above_50_sma:
+                vol_label = "STRONG BUYING VOLUME" if rvol_confirmed else "LOW VOLUME"
+            elif curr_price < lower_threshold and slope == "DOWN":
+                vol_label = "STRONG SELLING VOLUME" if rvol_confirmed else "LOW VOLUME"
+            else:
+                vol_label = "HIGH VOLUME" if rvol_confirmed else "LOW VOLUME"
+
+            vol_str = f"RVOL: {rvol:.2f}x ({vol_label})"
             pct_from_ema200 = ((curr_price - curr_ema200) / curr_ema200) * 100
-            vol_str = f"RVOL: {rvol:.2f}x ({'HIGH VOLUME CONFIRMED' if rvol_confirmed else 'LOW VOLUME'})"
             
+            # Signal Logic with RVOL Confirmation
             if curr_price > upper_threshold and slope in ["UP", "FLAT"]:
                 if above_20_ema and above_50_sma:
                     if rvol_confirmed:
                         status_short = "🟢 Bullish"
                         full_signal = "BUY / BULLISH HOLD"
-                        reason = f"Price > {effective_buffer_pct*100:.1f}% buffer above 200 EMA with full short-term momentum & strong volume ({rvol:.2f}x)."
+                        reason = f"Price > {effective_buffer_pct*100:.1f}% buffer above 200 EMA with full short-term momentum & strong buying volume ({rvol:.2f}x)."
                     else:
                         status_short = "🟡 Warning"
                         full_signal = "BULLISH / LOW VOLUME"
@@ -132,7 +140,7 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                 if rvol_confirmed:
                     status_short = "🔴 Bearish"
                     full_signal = "SELL / CASH OUT"
-                    reason = f"Price < {effective_buffer_pct*100:.1f}% buffer below 200 EMA on high volume ({rvol:.2f}x) & slope is DOWN."
+                    reason = f"Price < {effective_buffer_pct*100:.1f}% buffer below 200 EMA on heavy selling volume ({rvol:.2f}x) & slope is DOWN."
                 else:
                     status_short = "🔴 Bearish"
                     full_signal = "SELL / LOW VOL DOWN"
@@ -180,16 +188,19 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
 st.title(f"📈 {REPO_NAME}")
 st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-# --- URL Parameter Management ---
-# Read tickers parameter from URL bar if present, default to empty string
+# --- URL Parameter Management & Session Binding ---
 query_params = st.query_params
-initial_tickers = query_params.get("tickers", "")
+url_tickers = query_params.get("tickers", "")
+
+# Initialize or synchronize session state widget key with browser URL state
+if "watchlist_input" not in st.session_state:
+    st.session_state["watchlist_input"] = url_tickers
 
 st.sidebar.header("Screener Configuration")
 
 ticker_input = st.sidebar.text_area(
     "Watchlist Tickers (comma-separated):", 
-    value=initial_tickers,
+    key="watchlist_input",
     placeholder="e.g. SPY, QQQ, NVDA, BTC-USD",
     help="Type tickers here and run. The URL bar will update so you can bookmark this custom run in your browser."
 )
@@ -197,7 +208,7 @@ ticker_input = st.sidebar.text_area(
 buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", min_value=1.0, max_value=5.0, value=2.0, step=0.5) / 100
 rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", min_value=1.0, max_value=2.5, value=1.25, step=0.05)
 
-# Sync user input with browser URL parameters
+# Sync user input string with browser URL parameters
 clean_ticker_str = ", ".join([t.strip().upper() for t in ticker_input.split(",") if t.strip()])
 if clean_ticker_str:
     st.query_params["tickers"] = clean_ticker_str
@@ -254,7 +265,7 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
             # Reference Legend
             with st.expander("📖 Signal Reference Guide", expanded=False):
                 st.markdown(f"""
-                * **🟢 Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term momentum MAs are aligned, and RVOL confirms institutional participation ($\ge {rvol_setting:.2f}\text{{x}}$).
+                * **🟢 Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term momentum MAs are aligned, and RVOL confirms strong buying volume ($\ge {rvol_setting:.2f}\text{{x}}$).
                 * **🟡 Pullback (MACRO BULL / WAIT FOR ENTRY):** Macro trend remains long-term bullish (>200 EMA), but price is pulling back below short-term MAs. Wait for momentum reclaim before entering.
                 * **🟡 Warning (BULLISH / LOW VOLUME or CAUTION):** Price is above targets, but RVOL is below the ${rvol_setting:.2f}\text{{x}}$ threshold, signaling low-volume breakout risk; or slope/buffer conditions are incomplete.
                 * **⚪ Neutral (NOISE BUFFER ZONE):** Price is consolidating within the ± dynamic buffer zone around the 200 EMA. Avoid buying or selling to prevent whipsaws.
