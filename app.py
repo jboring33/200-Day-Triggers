@@ -41,10 +41,10 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             df = yf.download(ticker, period=lookback_period, auto_adjust=True, progress=False)
             
             if df.empty or len(df) < 200 + slope_window:
-                st.warning(f"Skipping {ticker}: Insufficient historical data (requires >205 trading days).")
+                st.warning("Skipping " + str(ticker) + ": Insufficient historical data (requires >205 trading days).")
                 continue
             
-            # --- Ensure single-column Series extraction for yfinance data ---
+            # Extract single-column Series from yfinance data
             close = df['Close']
             if isinstance(close, pd.DataFrame):
                 close = close.squeeze()
@@ -79,7 +79,7 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             
             # Volatility Calculations (ATR & ATR%)
             atr = float(calculate_atr(df_clean).iloc[-1])
-            atr_pct = (atr / curr_price) * 100  # ATR as a percentage of price
+            atr_pct = (atr / curr_price) * 100
             effective_buffer_pct = max(default_buffer_pct, (atr / curr_price) * 1.5)
             
             upper_threshold = curr_ema200 * (1 + effective_buffer_pct)
@@ -118,8 +118,7 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             else:
                 vol_label = "HIGH VOLUME" if rvol_confirmed else "LOW VOLUME"
 
-            # Dynamically format vol_str using vol_label
-            vol_str = f"RVOL: {rvol:.2f}x ({vol_label})"
+            vol_str = "RVOL: " + f"{rvol:.2f}" + "x (" + vol_label + ")"
             pct_from_ema200 = ((curr_price - curr_ema200) / curr_ema200) * 100
             
             # Signal Logic with RVOL Confirmation
@@ -128,39 +127,46 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                     if rvol_confirmed:
                         status_short = "🟢 Bullish"
                         full_signal = "BUY / BULLISH HOLD"
-                        reason = f"Price > {effective_buffer_pct*100:.1f}% buffer above 200 EMA with full short-term momentum & {vol_label.lower()} ({rvol:.2f}x)."
+                        reason = "Price > " + f"{effective_buffer_pct*100:.1f}" + "% buffer above 200 EMA with full short-term momentum & " + vol_label.lower() + " (" + f"{rvol:.2f}" + "x)."
                     else:
                         status_short = "🟡 Warning"
                         full_signal = "BULLISH / LOW VOLUME"
-                        reason = f"Price > 200 EMA buffer & short MAs aligned, but volume status is {vol_label} (RVOL: {rvol:.2f}x < {rvol_threshold:.2f}x)."
+                        reason = "Price > 200 EMA buffer & short MAs aligned, but volume status is " + vol_label + " (RVOL: " + f"{rvol:.2f}" + "x < " + f"{rvol_threshold:.2f}" + "x)."
                 else:
                     status_short = "🟡 Pullback"
                     full_signal = "MACRO BULL / WAIT FOR ENTRY"
-                    reason = f"Macro trend is UP (>200 EMA), but price is below 20 EMA/50 SMA. Wait for momentum reclaim."
+                    reason = "Macro trend is UP (>200 EMA), but price is below 20 EMA/50 SMA. Wait for momentum reclaim."
             elif curr_price < lower_threshold and slope == "DOWN":
                 if rvol_confirmed:
                     status_short = "🔴 Bearish"
                     full_signal = "SELL / CASH OUT"
-                    reason = f"Price < {effective_buffer_pct*100:.1f}% buffer below 200 EMA on {vol_label.lower()} ({rvol:.2f}x) & slope is DOWN."
+                    reason = "Price < " + f"{effective_buffer_pct*100:.1f}" + "% buffer below 200 EMA on " + vol_label.lower() + " (" + f"{rvol:.2f}" + "x) & slope is DOWN."
                 else:
                     status_short = "🔴 Bearish"
                     full_signal = "SELL / LOW VOL DOWN"
-                    reason = f"Price < {effective_buffer_pct*100:.1f}% buffer below 200 EMA & slope DOWN (RVOL: {rvol:.2f}x, {vol_label})."
+                    reason = "Price < " + f"{effective_buffer_pct*100:.1f}" + "% buffer below 200 EMA & slope DOWN (RVOL: " + f"{rvol:.2f}" + "x, " + vol_label + ")."
             elif lower_threshold <= curr_price <= upper_threshold:
                 status_short = "⚪ Neutral"
                 full_signal = "NOISE BUFFER ZONE"
-                reason = f"Price within +/-{effective_buffer_pct*100:.1f}% noise buffer of 200 EMA; avoid whipsaw."
+                reason = "Price within +/-" + f"{effective_buffer_pct*100:.1f}" + "% noise buffer of 200 EMA; avoid whipsaw."
             else:
                 status_short = "🟡 Warning"
                 full_signal = "WATCH / CAUTION"
-                reason = f"Price crossed EMA but slope ({slope}) or buffer does not confirm exit/entry."
+                reason = "Price crossed EMA but slope (" + str(slope) + ") or buffer does not confirm exit/entry."
 
-            # Construct summary string with standard text dividers
+            # Construct summary string safely
             flyover_summary = (
-                f"[{full_signal}] {reason} | Price: ${curr_price:.2f} | {vol_str} | "
-                f"ATR%: {atr_pct:.2f}% | 20 EMA: ${curr_ema20:.2f} \vert{} 50 SMA:${curr_sma50:.2f} | "
-                f"200 EMA: ${curr_ema200:.2f} | Dist 200EMA: {pct_from_ema200:+.2f}% | "
-                f"Buffer: +/-{effective_buffer_pct*100:.1f}% | Short Trend: {short_term_momentum} | Cross: {ma_cross}"
+                "[" + str(full_signal) + "] " + str(reason) + " | " +
+                "Price: $" + f"{curr_price:.2f}" + " | " +
+                str(vol_str) + " | " +
+                "ATR%: " + f"{atr_pct:.2f}" + "% | " +
+                "20 EMA: $" + f"{curr_ema20:.2f}" + " | " +
+                "50 SMA: $" + f"{curr_sma50:.2f}" + " | " +
+                "200 EMA: $" + f"{curr_ema200:.2f}" + " | " +
+                "Dist 200EMA: " + f"{pct_from_ema200:+.2f}" + "% | " +
+                "Buffer: +/-" + f"{effective_buffer_pct*100:.1f}" + "% | " +
+                "Short Trend: " + str(short_term_momentum) + " | " +
+                "Cross: " + str(ma_cross)
             )
 
             results.append({
@@ -176,21 +182,21 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                 "50 SMA": round(curr_sma50, 2),
                 "200 EMA": round(curr_ema200, 2),
                 "Dist 200EMA (%)": f"{pct_from_ema200:+.2f}%",
-                "Dynamic Buffer": f"+/-{effective_buffer_pct*100:.1f}%",
+                "Dynamic Buffer": "+/-" + f"{effective_buffer_pct*100:.1f}" + "%",
                 "Reason": reason
             })
             
         except Exception as e:
-            st.error(f"Error processing {ticker}: {e}")
+            st.error("Error processing " + str(ticker) + ": " + str(e))
             
     return pd.DataFrame(results)
 
 # --- Streamlit Dashboard UI ---
 
-st.title(f"📈 {REPO_NAME}")
-st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.title("📈 " + REPO_NAME)
+st.caption("Last updated: " + datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
-# --- URL Parameter Management & Session Binding ---
+# URL Parameter Management
 query_params = st.query_params
 url_tickers = query_params.get("tickers", "")
 
@@ -272,44 +278,53 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
             )
             
             with st.expander("📖 Signal Reference Guide & Parameter Tuning", expanded=False):
-                st.markdown(
-                    "### Signal Definitions\n"
-                    f"* **Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term MAs are aligned, and RVOL confirms **STRONG BUYING VOLUME** (>= {rvol_setting:.2f}x).\n"
-                    "* **Pullback (MACRO BULL / WAIT FOR ENTRY):** Macro trend remains long-term bullish (>200 EMA), but price is pulling back below short-term MAs. Wait for momentum reclaim before entering.\n"
-                    f"* **Warning (BULLISH / LOW VOLUME or CAUTION):** Price is above targets, but volume status is **LOW VOLUME** (below the {rvol_setting:.2f}x threshold), signaling low-volume breakout risk; or slope/buffer conditions are incomplete.\n"
-                    "* **Neutral (NOISE BUFFER ZONE):** Price is consolidating within the noise buffer zone around the 200 EMA. Avoid buying or selling to prevent whipsaws.\n"
-                    "* **Bearish (SELL / CASH OUT):** Price is below the 200 EMA (minus dynamic buffer) with a downward slope and **STRONG SELLING VOLUME**.\n\n"
-                    "---\n\n"
-                    "### Parameter Tuning Guide: What, When & Why\n\n"
-                    f"#### 1. Base Buffer Noise Filter (%) [Current: {buffer_setting*100:.1f}%]\n"
-                    "* **WHAT IT IS:** Sets a mandatory percentage 'dead zone' around the 200 EMA. The app automatically compares this base value against `1.5 * ATR%` and uses whichever is larger to build a dynamic ceiling and floor around the long-term trendline.\n"
-                    "* **WHY USE IT:** Long-term trendlines suffer from 'whipsaws'—where daily noise temporarily pushes price a fraction of a percent above or below the line without a true trend change. The buffer forces price to prove a structural breakout before generating a signal.\n"
-                    "* **WHEN TO LOWER (1.0% - 1.5%):**\n"
-                    "  * **Low-Beta Assets & Broad Indexes:** Large-cap index ETFs (SPY, VTI, SCHD) move methodically. A 2% buffer may cause significantly delayed signals.\n"
-                    "  * **Low-Volatility Regimes:** When the market VIX is under 15 and daily candle ranges are tight.\n"
-                    "* **WHEN TO RAISE (3.0% - 5.0%):**\n"
-                    "  * **High-Beta & Crypto Assets:** High-volatility growth stocks (NVDA, TSLA) or crypto (BTC, ETH) routinely swing 2%-4% in a single day. A tight buffer generates constant false buy/sell signals.\n"
-                    "  * **Market Volatility Spikes:** During macro panics or high VIX regimes (>25), expansion of noise requires wider margins.\n\n"
+                # Formatted via .format() to avoid standard f-string macro/brace expansion conflicts
+                guide_template = """
+### Signal Definitions
+* **Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term MAs are aligned, and RVOL confirms **STRONG BUYING VOLUME** (>= {rvol:.2f}x).
+* **Pullback (MACRO BULL / WAIT FOR ENTRY):** Macro trend remains long-term bullish (>200 EMA), but price is pulling back below short-term MAs. Wait for momentum reclaim before entering.
+* **Warning (BULLISH / LOW VOLUME or CAUTION):** Price is above targets, but volume status is **LOW VOLUME** (below the {rvol:.2f}x threshold), signaling low-volume breakout risk; or slope/buffer conditions are incomplete.
+* **Neutral (NOISE BUFFER ZONE):** Price is consolidating within the noise buffer zone around the 200 EMA. Avoid buying or selling to prevent whipsaws.
+* **Bearish (SELL / CASH OUT):** Price is below the 200 EMA (minus dynamic buffer) with a downward slope and **STRONG SELLING VOLUME**.
 
-                    f"#### 2. Min RVOL Breakout Confirmation (x) [Current: {rvol_setting:.2f}x]\n"
-                    "* **WHAT IT IS:** Relative Volume (RVOL) compares current trading volume against the asset's 20-day average volume. A value of 1.25x means today's volume is 25% higher than normal.\n"
-                    "* **WHY USE IT:** Institutional funds move markets; retail traders do not. Price moving above a trendline on light volume is often a bull trap. Requiring elevated RVOL ensures institutional backing on breakout signals.\n"
-                    "* **WHEN TO LOWER (0.1x - 1.0x):**\n"
-                    "  * **Off-Hours / Early Session Screening:** When scanning market data early in the trading session before full daily volume has accumulated.\n"
-                    "  * **Broad Market ETFs & Ultra-Short Fixed Income:** Liquidity-rich ETFs (SPY, QQQ, SGOV) move with index rebalancing rather than retail volume spikes, meaning RVOL rarely spikes as aggressively as in individual equities.\n"
-                    "* **WHEN TO RAISE (1.5x - 2.5x):**\n"
-                    "  * **Earning Plays & High-Conviction Breakouts:** When filtering exclusively for explosive, high-confidence momentum movers where major institutional accumulation is required.\n\n"
+---
 
-                    f"#### 3. Min Daily Volatility / ATR (%) [Current: {min_atr_setting:.2f}%]\n"
-                    "* **WHAT IT IS:** Uses the 14-day Average True Range expressed as a percentage of share price to measure daily percentage movement range.\n"
-                    "* **WHY USE IT:** It acts as an activity gate. It filters out sluggish, range-bound assets that take months to move, allowing focus on assets with active daily ranges.\n"
-                    "* **WHEN TO SET TO 0.0% (DISABLED):**\n"
-                    "  * **Core Conservative Holdings & Cash Alternatives:** When evaluating capital preservation funds (SGOV, JPST), dividend ETFs (SPHD), or ultra-short fixed-income where daily price ranges are near zero.\n"
-                    "* **WHEN TO RAISE (1.5% - 2.0%):**\n"
-                    "  * **Tactical Equity & Swing Screening:** When seeking liquid growth stocks or sector ETFs that move enough daily to justify tactical swing positioning.\n"
-                    "* **WHEN TO RAISE (3.0%+):**\n"
-                    "  * **High-Beta / Momentum Trading:** When filtering strictly for rapid movers, leveraged ETFs (TQQQ, SOXL), or crypto assets."
-                )
+### Parameter Tuning Guide: What, When & Why
+
+#### 1. Base Buffer Noise Filter (%) [Current: {buffer:.1f}%]
+* **WHAT IT IS:** Sets a mandatory percentage dead zone around the 200 EMA. The app automatically compares this base value against `1.5 * ATR%` and uses whichever is larger to build a dynamic ceiling and floor around the long-term trendline.
+* **WHY USE IT:** Long-term trendlines suffer from whipsaws where daily noise temporarily pushes price a fraction of a percent above or below the line without a true trend change. The buffer forces price to prove a structural breakout before generating a signal.
+* **WHEN TO LOWER (1.0% - 1.5%):**
+  * **Low-Beta Assets & Broad Indexes:** Large-cap index ETFs (SPY, VTI, SCHD) move methodically. A 2% buffer may cause significantly delayed signals.
+  * **Low-Volatility Regimes:** When the market VIX is under 15 and daily candle ranges are tight.
+* **WHEN TO RAISE (3.0% - 5.0%):**
+  * **High-Beta & Crypto Assets:** High-volatility growth stocks (NVDA, TSLA) or crypto (BTC, ETH) routinely swing 2%-4% in a single day. A tight buffer generates constant false buy/sell signals.
+  * **Market Volatility Spikes:** During macro panics or high VIX regimes (>25), expansion of noise requires wider margins.
+
+#### 2. Min RVOL Breakout Confirmation (x) [Current: {rvol:.2f}x]
+* **WHAT IT IS:** Relative Volume (RVOL) compares current trading volume against the asset's 20-day average volume. A value of 1.25x means today's volume is 25% higher than normal.
+* **WHY USE IT:** Institutional funds move markets; retail traders do not. Price moving above a trendline on light volume is often a bull trap. Requiring elevated RVOL ensures institutional backing on breakout signals.
+* **WHEN TO LOWER (0.1x - 1.0x):**
+  * **Off-Hours / Early Session Screening:** When scanning market data early in the trading session before full daily volume has accumulated.
+  * **Broad Market ETFs & Ultra-Short Fixed Income:** Liquidity-rich ETFs (SPY, QQQ, SGOV) move with index rebalancing rather than retail volume spikes, meaning RVOL rarely spikes as aggressively as in individual equities.
+* **WHEN TO RAISE (1.5x - 2.5x):**
+  * **Earning Plays & High-Conviction Breakouts:** When filtering exclusively for explosive, high-confidence momentum movers where major institutional accumulation is required.
+
+#### 3. Min Daily Volatility / ATR (%) [Current: {min_atr:.2f}%]
+* **WHAT IT IS:** Uses the 14-day Average True Range expressed as a percentage of share price to measure daily percentage movement range.
+* **WHY USE IT:** It acts as an activity gate. It filters out sluggish, range-bound assets that take months to move, allowing focus on assets with active daily ranges.
+* **WHEN TO SET TO 0.0% (DISABLED):**
+  * **Core Conservative Holdings & Cash Alternatives:** When evaluating capital preservation funds (SGOV, JPST), dividend ETFs (SPHD), or ultra-short fixed-income where daily price ranges are near zero.
+* **WHEN TO RAISE (1.5% - 2.0%):**
+  * **Tactical Equity & Swing Screening:** When seeking liquid growth stocks or sector ETFs that move enough daily to justify tactical swing positioning.
+* **WHEN TO RAISE (3.0%+):**
+  * **High-Beta / Momentum Trading:** When filtering strictly for rapid movers, leveraged ETFs (TQQQ, SOXL), or crypto assets.
+"""
+                st.markdown(guide_template.format(
+                    rvol=rvol_setting,
+                    buffer=buffer_setting * 100,
+                    min_atr=min_atr_setting
+                ))
             
             csv = df_results.to_csv(index=False).encode('utf-8')
             st.download_button(
