@@ -2,7 +2,8 @@
 Repository: 200 Day Triggers
 Description: Streamlit Web Application for Macro (200 EMA) and Short-Term (20 EMA / 50 SMA)
              Trend & Volatility Screening with ATR Dynamic Buffers, ATR% Filters, RVOL Volume Confirmation,
-             Directional Volume Labels, Flyover Tooltips, Parameter Tuning Guidance, and URL Parameter Persistence.
+             Directional Volume Labels, Flyover Tooltips, Parameter Tuning Guidance, Dynamic Preset Profiles,
+             and Full URL Parameter Persistence.
 """
 
 import streamlit as st
@@ -19,6 +20,41 @@ st.set_page_config(
 
 REPO_NAME = "200 Day Triggers"
 
+# --- Strategy Preset Profiles (Derived from Parameter Tuning Guide) ---
+PRESET_PROFILES = {
+    "Broad Market": {
+        "tickers": "SPY, QQQ, DIA, EMXC, VEA",
+        "buffer": 1.5,
+        "rvol": 1.00,
+        "min_atr": 0.75
+    },
+    "Bond / Fixed Income ETFs": {
+        "tickers": "SGOV, JPST, JAAA, JBBB, SCYB",
+        "buffer": 1.0,
+        "rvol": 0.10,  # Disable/lower RVOL requirement for credit roll liquidity
+        "min_atr": 0.00   # Disable ATR gate for ultra-low volatility
+    },
+    "Covered Call ETFs": {
+        "tickers": "JEPQ, JEPI, GPIQ, XYLD, QYLD",
+        "buffer": 1.5,
+        "rvol": 0.80,
+        "min_atr": 0.50
+    },
+    "Dividend & Value ETFs": {
+        "tickers": "SPHD, USMV, SCHD, VIG, VYM",
+        "buffer": 1.5,
+        "rvol": 1.25,
+        "min_atr": 0.50
+    },
+    "Speculative & High Volatility": {
+        "tickers": "FBTC, IAUM, NVDA, TSLA, TQQQ",
+        "buffer": 3.5,
+        "rvol": 1.50,
+        "min_atr": 2.00
+    },
+    "Custom / Manual Override": None
+}
+
 def calculate_atr(df, window=14):
     """Calculates the Average True Range (ATR) to measure asset volatility."""
     high = df['High']
@@ -32,7 +68,7 @@ def calculate_atr(df, window=14):
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
     return tr.rolling(window=window).mean()
 
-def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5, default_buffer_pct=0.02, rvol_threshold=1.25):
+def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5, default_buffer_pct=0.015, rvol_threshold=1.00):
     """Evaluates tickers across Macro (200 EMA), Short-Term (20 EMA / 50 SMA) trends, ATR% metrics, and RVOL volume logic."""
     results = []
     
@@ -41,7 +77,7 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             df = yf.download(ticker, period=lookback_period, auto_adjust=True, progress=False)
             
             if df.empty or len(df) < 200 + slope_window:
-                st.warning("Skipping " + str(ticker) + ": Insufficient historical data (requires >205 trading days).")
+                st.warning(f"Skipping {ticker}: Insufficient historical data (requires >205 trading days).")
                 continue
             
             # Extract single-column Series from yfinance data
@@ -55,317 +91,3 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             
             # Clean OHLC DataFrame for ATR
             df_clean = pd.DataFrame({'High': high, 'Low': low, 'Close': close})
-            
-            # Extract current scalar price & volume
-            curr_price = float(close.iloc[-1])
-            curr_volume = float(volume.iloc[-1])
-            
-            # RVOL Calculation (Current Volume / 20-Day SMA Volume)
-            vol_20_sma = float(volume.rolling(window=20).mean().iloc[-1])
-            rvol = curr_volume / vol_20_sma if vol_20_sma > 0 else 1.0
-            rvol_confirmed = rvol >= rvol_threshold
-            
-            # Moving Average Calculations
-            ema20 = close.ewm(span=20, adjust=False).mean()
-            sma50 = close.rolling(window=50).mean()
-            ema200 = close.ewm(span=200, adjust=False).mean()
-            sma200 = close.rolling(window=200).mean()
-            
-            curr_ema20 = float(ema20.iloc[-1])
-            curr_sma50 = float(sma50.iloc[-1])
-            curr_ema200 = float(ema200.iloc[-1])
-            curr_sma200 = float(sma200.iloc[-1])
-            prev_ema200 = float(ema200.iloc[-(slope_window + 1)])
-            
-            # Volatility Calculations (ATR & ATR%)
-            atr = float(calculate_atr(df_clean).iloc[-1])
-            atr_pct = (atr / curr_price) * 100
-            effective_buffer_pct = max(default_buffer_pct, (atr / curr_price) * 1.5)
-            
-            upper_threshold = curr_ema200 * (1 + effective_buffer_pct)
-            lower_threshold = curr_ema200 * (1 - effective_buffer_pct)
-            
-            # Slope Calculation
-            ema_diff_pct = ((curr_ema200 - prev_ema200) / prev_ema200) * 100
-            if ema_diff_pct > 0.05:
-                slope = "UP"
-            elif ema_diff_pct < -0.05:
-                slope = "DOWN"
-            else:
-                slope = "FLAT"
-                
-            # Golden/Death Cross Evaluation
-            ma_cross = "GOLDEN CROSS (Bullish)" if curr_sma50 > curr_sma200 else "DEATH CROSS (Bearish)"
-                
-            # Short-Term Momentum Alignment Check
-            above_20_ema = curr_price > curr_ema20
-            above_50_sma = curr_price > curr_sma50
-            
-            if above_20_ema and above_50_sma:
-                short_term_momentum = "BULLISH (Above 20 EMA & 50 SMA)"
-            elif not above_20_ema and not above_50_sma:
-                short_term_momentum = "BEARISH (Below 20 EMA & 50 SMA)"
-            elif above_20_ema and not above_50_sma:
-                short_term_momentum = "MIXED (Above 20 EMA / Below 50 SMA)"
-            else:
-                short_term_momentum = "PULLBACK (Below 20 EMA / Above 50 SMA)"
-                
-            # Directional Volume Labeling
-            if curr_price > upper_threshold and above_20_ema and above_50_sma:
-                vol_label = "STRONG BUYING VOLUME" if rvol_confirmed else "LOW VOLUME"
-            elif curr_price < lower_threshold and slope == "DOWN":
-                vol_label = "STRONG SELLING VOLUME" if rvol_confirmed else "LOW VOLUME"
-            else:
-                vol_label = "HIGH VOLUME" if rvol_confirmed else "LOW VOLUME"
-
-            vol_str = "RVOL: " + f"{rvol:.2f}" + "x (" + vol_label + ")"
-            pct_from_ema200 = ((curr_price - curr_ema200) / curr_ema200) * 100
-            
-            # Signal Logic with RVOL Confirmation
-            if curr_price > upper_threshold and slope in ["UP", "FLAT"]:
-                if above_20_ema and above_50_sma:
-                    if rvol_confirmed:
-                        status_short = "🟢 Bullish"
-                        full_signal = "BUY / BULLISH HOLD"
-                        reason = "Price > " + f"{effective_buffer_pct*100:.1f}" + "% buffer above 200 EMA with full short-term momentum & " + vol_label.lower() + " (" + f"{rvol:.2f}" + "x)."
-                    else:
-                        status_short = "🟡 Warning"
-                        full_signal = "BULLISH / LOW VOLUME"
-                        reason = "Price > 200 EMA buffer & short MAs aligned, but volume status is " + vol_label + " (RVOL: " + f"{rvol:.2f}" + "x < " + f"{rvol_threshold:.2f}" + "x)."
-                else:
-                    status_short = "🟡 Pullback"
-                    full_signal = "MACRO BULL / WAIT FOR ENTRY"
-                    reason = "Macro trend is UP (>200 EMA), but price is below 20 EMA/50 SMA. Wait for momentum reclaim."
-            elif curr_price < lower_threshold and slope == "DOWN":
-                if rvol_confirmed:
-                    status_short = "🔴 Bearish"
-                    full_signal = "SELL / CASH OUT"
-                    reason = "Price < " + f"{effective_buffer_pct*100:.1f}" + "% buffer below 200 EMA on " + vol_label.lower() + " (" + f"{rvol:.2f}" + "x) & slope is DOWN."
-                else:
-                    status_short = "🔴 Bearish"
-                    full_signal = "SELL / LOW VOL DOWN"
-                    reason = "Price < " + f"{effective_buffer_pct*100:.1f}" + "% buffer below 200 EMA & slope DOWN (RVOL: " + f"{rvol:.2f}" + "x, " + vol_label + ")."
-            elif lower_threshold <= curr_price <= upper_threshold:
-                status_short = "⚪ Neutral"
-                full_signal = "NOISE BUFFER ZONE"
-                reason = "Price within +/-" + f"{effective_buffer_pct*100:.1f}" + "% noise buffer of 200 EMA; avoid whipsaw."
-            else:
-                status_short = "🟡 Warning"
-                full_signal = "WATCH / CAUTION"
-                reason = "Price crossed EMA but slope (" + str(slope) + ") or buffer does not confirm exit/entry."
-
-            # Construct summary string safely
-            flyover_summary = (
-                "[" + str(full_signal) + "] " + str(reason) + " | " +
-                "Price: $" + f"{curr_price:.2f}" + " | " +
-                str(vol_str) + " | " +
-                "ATR%: " + f"{atr_pct:.2f}" + "% | " +
-                "20 EMA: $" + f"{curr_ema20:.2f}" + " | " +
-                "50 SMA: $" + f"{curr_sma50:.2f}" + " | " +
-                "200 EMA: $" + f"{curr_ema200:.2f}" + " | " +
-                "Dist 200EMA: " + f"{pct_from_ema200:+.2f}" + "% | " +
-                "Buffer: +/-" + f"{effective_buffer_pct*100:.1f}" + "% | " +
-                "Short Trend: " + str(short_term_momentum) + " | " +
-                "Cross: " + str(ma_cross)
-            )
-
-            results.append({
-                "Status & Signal": status_short,
-                "Ticker": ticker,
-                "Trigger Details": flyover_summary,
-                "Full Signal": full_signal,
-                "Price": round(curr_price, 2),
-                "RVOL": round(rvol, 2),
-                "ATR (%)": round(atr_pct, 2),
-                "Volume Label": vol_label,
-                "20 EMA": round(curr_ema20, 2),
-                "50 SMA": round(curr_sma50, 2),
-                "200 EMA": round(curr_ema200, 2),
-                "Dist 200EMA (%)": f"{pct_from_ema200:+.2f}%",
-                "Dynamic Buffer": "+/-" + f"{effective_buffer_pct*100:.1f}" + "%",
-                "Reason": reason
-            })
-            
-        except Exception as e:
-            st.error("Error processing " + str(ticker) + ": " + str(e))
-            
-    return pd.DataFrame(results)
-
-# --- Streamlit Dashboard UI ---
-
-st.title("📈 " + REPO_NAME)
-st.caption("Last updated: " + datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-
-# URL Parameter Management
-query_params = st.query_params
-url_tickers = query_params.get("tickers", "")
-
-if "watchlist_input" not in st.session_state:
-    st.session_state["watchlist_input"] = url_tickers
-
-st.sidebar.header("Screener Configuration")
-
-ticker_input = st.sidebar.text_area(
-    "Watchlist Tickers (comma-separated):", 
-    key="watchlist_input",
-    placeholder="e.g. SPY, QQQ, NVDA, BTC-USD",
-    help="Type tickers here and run. The URL bar will update so you can bookmark this custom run in your browser."
-)
-
-buffer_setting = st.sidebar.slider(
-    "Base Buffer Noise Filter (%)", 
-    min_value=1.0, 
-    max_value=5.0, 
-    value=2.0, 
-    step=0.5,
-    help="Sets the percentage dead zone around the 200 EMA to avoid false breakout whipsaws. Compared automatically against 1.5x ATR%."
-) / 100
-
-rvol_setting = st.sidebar.slider(
-    "Min RVOL Breakout Confirmation (x)", 
-    min_value=0.1, 
-    max_value=2.5, 
-    value=1.25, 
-    step=0.05,
-    help="Minimum Relative Volume required to confirm trend breakout strength (Current Volume / 20-Day SMA Volume)."
-)
-
-min_atr_setting = st.sidebar.slider(
-    "Min Daily Volatility / ATR (%)", 
-    min_value=0.0, 
-    max_value=5.0, 
-    value=0.0, 
-    step=0.25,
-    help="Filters out assets whose 14-day Average True Range is below this percentage of price."
-)
-
-clean_ticker_str = ", ".join([t.strip().upper() for t in ticker_input.split(",") if t.strip()])
-if clean_ticker_str:
-    st.query_params["tickers"] = clean_ticker_str
-
-run_screener = st.sidebar.button("Run Screener", type="primary")
-
-if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
-    st.session_state["ran_once"] = True
-    
-    tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
-    
-    if tickers_list:
-        with st.spinner("Fetching market data and calculating indicators..."):
-            df_results = analyze_enhanced_sma_strategy(
-                tickers_list, 
-                default_buffer_pct=buffer_setting,
-                rvol_threshold=rvol_setting
-            )
-            
-        if not df_results.empty:
-            if min_atr_setting > 0:
-                df_results = df_results[df_results["ATR (%)"] >= min_atr_setting].reset_index(drop=True)
-            
-        if not df_results.empty:
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Total Tickers", len(df_results))
-            col2.metric("Full Bullish Signals", len(df_results[df_results["Status & Signal"].str.contains("Bullish")]))
-            col3.metric("Macro Bull (Pullback)", len(df_results[df_results["Status & Signal"].str.contains("Pullback")]))
-            col4.metric("Bearish Signals", len(df_results[df_results["Status & Signal"].str.contains("Bearish")]))
-            
-            st.divider()
-            
-            st.dataframe(
-                df_results[["Status & Signal", "Ticker", "Trigger Details"]],
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Status & Signal": st.column_config.TextColumn(
-                        "Status & Signal", 
-                        width="small",
-                        help="Short trend status. See reference legend below for full definitions."
-                    ),
-                    "Ticker": st.column_config.TextColumn(
-                        "Ticker", 
-                        width="small"
-                    ),
-                    "Trigger Details": st.column_config.TextColumn(
-                        "Trigger Details", 
-                        width="large",
-                        help="Hover over any cell to view full price, RVOL, volume classification, ATR%, 20 EMA, 50 SMA, 200 EMA, and volatility buffer metrics"
-                    ),
-                }
-            )
-            
-            with st.expander("📖 Signal Reference Guide & Parameter Tuning", expanded=False):
-                guide_template = """
-### Signal Definitions
-* **Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term MAs are aligned, and RVOL confirms **STRONG BUYING VOLUME** (>= {rvol:.2f}x).
-* **Pullback (MACRO BULL / WAIT FOR ENTRY):** Macro trend remains long-term bullish (>200 EMA), but price is pulling back below short-term MAs. Wait for momentum reclaim before entering.
-* **Warning (BULLISH / LOW VOLUME or CAUTION):** Price is above targets, but volume status is **LOW VOLUME** (below the {rvol:.2f}x threshold), signaling low-volume breakout risk; or slope/buffer conditions are incomplete.
-* **Neutral (NOISE BUFFER ZONE):** Price is consolidating within the noise buffer zone around the 200 EMA. Avoid buying or selling to prevent whipsaws.
-* **Bearish (SELL / CASH OUT):** Price is below the 200 EMA (minus dynamic buffer) with a downward slope and **STRONG SELLING VOLUME**.
-
----
-
-### Parameter Tuning Guide: What, When & Why
-
-#### 1. Base Buffer Noise Filter (%) [Current: {buffer:.1f}%]
-* **WHAT IT IS:** Sets a mandatory percentage dead zone around the 200 EMA. The app automatically compares this base value against `1.5 * ATR%` and uses whichever is larger to build a dynamic ceiling and floor around the long-term trendline.
-* **WHY USE IT:** Long-term trendlines suffer from whipsaws where daily noise temporarily pushes price a fraction of a percent above or below the line without a true trend change. The buffer forces price to prove a structural breakout before generating a signal.
-* **WHEN TO LOWER (1.0% - 1.5%):**
-  * **Low-Beta Assets & Broad Indexes:** Large-cap index ETFs (SPY, VTI, SCHD) move methodically. A 2% buffer may cause significantly delayed signals.
-  * **Low-Volatility Regimes:** When the market VIX is under 15 and daily candle ranges are tight.
-* **WHEN TO RAISE (3.0% - 5.0%):**
-  * **High-Beta & Crypto Assets:** High-volatility growth stocks (NVDA, TSLA) or crypto (BTC, ETH) routinely swing 2%-4% in a single day. A tight buffer generates constant false buy/sell signals.
-  * **Market Volatility Spikes:** During macro panics or high VIX regimes (>25), expansion of noise requires wider margins.
-* **ASSET CLASS SPECIFICS & ASYMMETRIC ADJUSTMENTS:**
-  * **Conservative Fixed Income & Cash Alternatives (SGOV, JPST, USMV):** Set buffer low (1.0%). These assets move in fractions of a percent, so wider buffers will obscure true signals.
-  * **Securitized Debt & Credit ETFs (JAAA, JBBB, SCYB):** Use 1.0% - 1.5% base buffer. Their volatility is driven by credit spread shifts rather than daily equity momentum.
-  * **High-Yield & Value Equity (SPHD):** Use 1.5% - 2.0% base buffer to accommodate dividend-driven yield rotation while avoiding noise.
-  * **Bull vs. Bear Asymmetric Buffer Strategy:** Consider using a narrower buffer on upside breakouts (e.g., 1.5%) to enter trends early, but a wider buffer on downside tests (e.g., 2.5% - 3.0%) to prevent getting shaken out of core macro uptrends during temporary market drawdowns.
-
-#### 2. Min RVOL Breakout Confirmation (x) [Current: {rvol:.2f}x]
-* **WHAT IT IS:** Relative Volume (RVOL) compares current trading volume against the asset's 20-day average volume. A value of 1.25x means today's volume is 25% higher than normal.
-* **WHY USE IT:** Institutional funds move markets; retail traders do not. Price moving above a trendline on light volume is often a bull trap. Requiring elevated RVOL ensures institutional backing on breakout signals.
-* **WHEN TO LOWER (0.1x - 1.0x):**
-  * **Off-Hours / Early Session Screening:** When scanning market data early in the trading session before full daily volume has accumulated.
-  * **Broad Market ETFs & Ultra-Short Fixed Income:** Liquidity-rich ETFs (SPY, QQQ, SGOV) move with index rebalancing rather than retail volume spikes, meaning RVOL rarely spikes as aggressively as in individual equities.
-* **WHEN TO RAISE (1.5x - 2.5x):**
-  * **Earning Plays & High-Conviction Breakouts:** When filtering exclusively for explosive, high-confidence momentum movers where major institutional accumulation is required.
-* **ASSET CLASS SPECIFICS & VOLUME CONFIRMATION RULES:**
-  * **Ultra-Short & Senior Loan ETFs (SGOV, JPST, JAAA):** Set RVOL threshold to 0.1x - 0.5x (effectively disabling it). Volume in institutional credit ETFs reflects liquidity roll rather than directional accumulation; requiring high RVOL will cause false negative "Low Volume" warnings.
-  * **High-Yield & Mezzanine Debt (JBBB, SCYB):** Set RVOL to 1.0x. Moderate volume confirmation ensures liquidity is present without filtering out valid credit market trends.
-  * **Equities & Dividend ETFs (USMV, SPHD):** Use 1.25x - 1.50x. High volume is essential to confirm institutional buying/selling pressure on price breakouts.
-
-#### 3. Min Daily Volatility / ATR (%) [Current: {min_atr:.2f}%]
-* **WHAT IT IS:** Uses the 14-day Average True Range expressed as a percentage of share price to measure daily percentage movement range.
-* **WHY USE IT:** It acts as an activity gate. It filters out sluggish, range-bound assets that take months to move, allowing focus on assets with active daily ranges.
-* **WHEN TO SET TO 0.0% (DISABLED):**
-  * **Core Conservative Holdings & Cash Alternatives:** When evaluating capital preservation funds (SGOV, JPST), dividend ETFs (SPHD), or ultra-short fixed-income where daily price ranges are near zero.
-* **WHEN TO RAISE (1.5% - 2.0%):**
-  * **Tactical Equity & Swing Screening:** When seeking liquid growth stocks or sector ETFs that move enough daily to justify tactical swing positioning.
-* **WHEN TO RAISE (3.0%+):**
-  * **High-Beta / Momentum Trading:** When filtering strictly for rapid movers, leveraged ETFs (TQQQ, SOXL), or crypto assets.
-* **ASSET CLASS BENCHMARKS & VOLATILITY EXPECTATIONS:**
-  * **Ultra-Short Cash Reserves (SGOV, JPST):** Typical ATR% is 0.01% - 0.05%. Keep filter set to 0.0%.
-  * **AAA/BBB CLOs & Securitized Credit (JAAA, JBBB):** Typical ATR% is 0.10% - 0.40%. Keep filter at 0.0% or set under 0.20%.
-  * **Low-Volatility Equity (USMV, SPHD):** Typical ATR% is 0.50% - 1.00%. Use 0.50% filter to eliminate bond-like stagnation while capturing equity trends.
-  * **Broad Market Indexes (SPY, QQQ):** Typical ATR% is 0.80% - 1.50%. Set to 0.75% - 1.00% to screen for active trend regimes.
-  * **Individual Equities & High-Beta Momentum:** Typical ATR% is 2.00% - 5.00%+. Set to 2.00%+ when filtering exclusively for high-velocity trade candidates.
-"""
-                st.markdown(guide_template.format(
-                    rvol=rvol_setting,
-                    buffer=buffer_setting * 100,
-                    min_atr=min_atr_setting
-                ))
-            
-            csv = df_results.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Download CSV Report",
-                data=csv,
-                file_name="200_day_triggers_report.csv",
-                mime="text/csv"
-            )
-        else:
-            st.info("No tickers matched the current ATR% volatility filter criteria.")
-    else:
-        st.warning("Please enter at least one ticker in the sidebar to run the screener.")
-else:
-    st.info("👈 Enter your tickers in the sidebar and click 'Run Screener' to analyze.")
