@@ -78,7 +78,7 @@ def calculate_atr(df, window=14):
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
     return tr.rolling(window=window).mean()
 
-def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, default_buffer_pct=0.020, rvol_threshold=0.80):
+def analyze_enhanced_sma_strategy(tickers, interval="1wk", slope_window=5, default_buffer_pct=0.020, rvol_threshold=0.80):
     """Evaluates tickers across Macro (200 EMA), Short-Term (20 EMA / 50 SMA) trends, ATR% metrics, and RVOL volume logic."""
     results = []
     
@@ -86,12 +86,15 @@ def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, defaul
     lookback_period = "10y" if interval == "1wk" else "2y"
     timeframe_label = "Weekly" if interval == "1wk" else "Daily"
     
+    # 1 Year lookback requirement (~52 weekly/daily bars minimum)
+    min_required_bars = 52
+    
     for ticker in tickers:
         try:
             df = yf.download(ticker, period=lookback_period, interval=interval, auto_adjust=True, progress=False)
             
-            if df.empty or len(df) < 200 + slope_window:
-                st.warning(f"Skipping {ticker}: Insufficient historical data for {timeframe_label} timeframe (requires >205 bars).")
+            if df.empty or len(df) < min_required_bars:
+                st.warning(f"Skipping {ticker}: Insufficient historical data for {timeframe_label} timeframe (requires >{min_required_bars} {timeframe_label.lower()} bars / ~1 year).")
                 continue
             
             close = df['Close']
@@ -112,17 +115,20 @@ def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, defaul
             rvol = curr_volume / vol_20_sma if vol_20_sma > 0 else 1.0
             rvol_confirmed = rvol >= rvol_threshold
             
-            # Moving Average Calculations
+            # Moving Average Calculations (min_periods & dynamic windows allow calculations for 1-year data)
             ema20 = close.ewm(span=20, adjust=False).mean()
-            sma50 = close.rolling(window=50).mean()
-            ema200 = close.ewm(span=200, adjust=False).mean()
-            sma200 = close.rolling(window=200).mean()
+            sma50 = close.rolling(window=min(50, len(close)), min_periods=10).mean()
+            ema200 = close.ewm(span=min(200, len(close)), adjust=False).mean()
+            sma200 = close.rolling(window=min(200, len(close)), min_periods=20).mean()
             
             curr_ema20 = float(ema20.iloc[-1])
             curr_sma50 = float(sma50.iloc[-1])
             curr_ema200 = float(ema200.iloc[-1])
             curr_sma200 = float(sma200.iloc[-1])
-            prev_ema200 = float(ema200.iloc[-(slope_window + 1)])
+            
+            # Ensure index offset stays within available rows
+            actual_slope_offset = min(slope_window + 1, len(ema200) - 1)
+            prev_ema200 = float(ema200.iloc[-actual_slope_offset])
             
             # Volatility Calculations (ATR & ATR%)
             atr = float(calculate_atr(df_clean).iloc[-1])
@@ -245,7 +251,7 @@ st.caption("Last updated: " + datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 # --- URL Parameter & State Management ---
 query_params = st.query_params
 url_preset = query_params.get("preset", "Broad Market")
-url_interval = query_params.get("interval", "1d")
+url_interval = query_params.get("interval", "1wk")
 
 if url_preset not in PRESET_CONFIGS:
     url_preset = "Broad Market"
@@ -261,14 +267,14 @@ run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_contai
 
 st.sidebar.divider()
 
-# Timeframe Selector
+# Timeframe Selector (Defaults to Weekly)
 timeframe_option = st.sidebar.radio(
     "Analysis Timeframe:",
-    options=["Daily (1d)", "Weekly (1wk)"],
-    index=1 if url_interval == "1wk" else 0,
+    options=["Weekly (1wk)", "Daily (1d)"],
+    index=1 if url_interval == "1d" else 0,
     help="Select bar aggregation. Weekly smoothing eliminates daily whipsaws for longer-term position trades."
 )
-interval_code = "1wk" if "Weekly" in timeframe_option else "1d"
+interval_code = "1d" if "Daily" in timeframe_option else "1wk"
 
 # Preset Dropdown Selector
 selected_preset = st.sidebar.selectbox(
@@ -394,7 +400,7 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
                 }
             )
             
-            # --- Restored Guidance Section ---
+            # --- Guidance Section ---
             with st.expander("📖 Signal Reference Guide & Parameter Tuning", expanded=False):
                 guide_template = """
 ### Signal Definitions
@@ -409,8 +415,8 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
 ### Parameter Tuning Guide: What, When & Why
 
 #### 1. Timeframe Selection [Current: {timeframe}]
-- **Daily (1d):** Best for active swing traders monitoring moves over days or weeks.
 - **Weekly (1wk):** Ideal for buy-and-hold and long-term position traders holding across months. Eliminates midweek volatility noise.
+- **Daily (1d):** Best for active swing traders monitoring moves over days or weeks.
 
 #### 2. Base Buffer Noise Filter (%) [Current: {buffer:.1f}%]
 - **WHAT IT IS:** Sets a mandatory percentage dead zone around the 200 EMA. The app automatically compares this base value against `1.5 * ATR%` and uses whichever is larger.
