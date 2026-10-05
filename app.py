@@ -416,12 +416,29 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
 - **WHAT IT IS:** Sets a mandatory percentage dead zone around the 200 EMA. The app automatically compares this base value against `1.5 * ATR%` and uses whichever is larger.
 - **WHEN TO LOWER (1.0% - 1.5%):** Ultra-low volatility assets like bonds or low-beta blue chips.
 - **WHEN TO RAISE (3.0% - 5.0%):** High-volatility assets like growth stocks, crypto, or leveraged ETFs to prevent noise whipsaws.
+
+#### 3. Relative Volume / RVOL Threshold [Current: {rvol:.2f}x]
+- **WHAT IT IS:** Measures the ratio of current volume against its 20-period Simple Moving Average (`Current Volume / 20-SMA Volume`).
+- **WHY IT MATTERS:** Breakouts occurring on low volume (<1.0x) frequently fail or reverse. RVOL confirmation ensures institutional participation.
+- **RECOMMENDED SETTINGS:**
+  - **0.1x - 0.5x:** For illiquid instruments, fixed income (bonds), or covered call ETFs where volume spikes are rare.
+  - **0.8x - 1.0x:** Default for broad index ETFs and standard sector tickers.
+  - **1.2x - 1.5x+:** For momentum equities, tech growth stocks, or crypto to filter out low-conviction fakeouts.
+
+#### 4. Average True Range / Min ATR (%) [Current: {min_atr:.2f}%]
+- **WHAT IT IS:** The 14-period Average True Range expressed as a percentage of current price (`(14-ATR / Price) * 100`). Measures raw historical price dispersion.
+- **WHY IT MATTERS:** Filters out stagnant or low-movement assets that lack the volatility needed for trading strategies, and dynamically expands the buffer distance on volatile stocks.
+- **RECOMMENDED SETTINGS:**
+  - **0.00%:** Keep at zero to evaluate all tickers regardless of volatility (useful for bonds/dividends).
+  - **0.50% - 0.75%:** Standard lower bound for equities to eliminate stagnant stocks.
+  - **1.50% - 2.00%+:** Screening specifically for high-volatility, fast-moving assets (e.g. Bitcoin ETFs, high-beta tech).
 """
                 st.markdown(
                     guide_template.format(
                         rvol=rvol_setting,
                         timeframe=timeframe_option,
-                        buffer=buffer_setting
+                        buffer=buffer_setting,
+                        min_atr=min_atr_setting
                     )
                 )
         else:
