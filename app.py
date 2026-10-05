@@ -367,7 +367,6 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
             if min_atr_setting > 0:
                 df_results = df_results[df_results["ATR (%)"] >= min_atr_setting].reset_index(drop=True)
             
-        if not df_results.empty:
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("Total Tickers", len(df_results))
             col2.metric("Full Bullish Signals", len(df_results[df_results["Status & Signal"].str.contains("Bullish")]))
@@ -415,4 +414,17 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
 
 #### 2. Base Buffer Noise Filter (%) [Current: {buffer:.1f}%]
 - **WHAT IT IS:** Sets a mandatory percentage dead zone around the 200 EMA. The app automatically compares this base value against `1.5 * ATR%` and uses whichever is larger.
-- **WHEN TO LOWER (1.0% - 1.5%):** Ultra
+- **WHEN TO LOWER (1.0% - 1.5%):** Ultra-low volatility assets like bonds or low-beta blue chips.
+- **WHEN TO RAISE (3.0% - 5.0%):** High-volatility assets like growth stocks, crypto, or leveraged ETFs to prevent noise whipsaws.
+"""
+                st.markdown(
+                    guide_template.format(
+                        rvol=rvol_setting,
+                        timeframe=timeframe_option,
+                        buffer=buffer_setting
+                    )
+                )
+        else:
+            st.info("No tickers met the specified criteria or dataset returned empty.")
+    else:
+        st.warning("Please enter at least one valid ticker symbol in the sidebar.")
