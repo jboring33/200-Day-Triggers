@@ -27,6 +27,12 @@ PRESET_CONFIGS = {
         "rvol": 1.00,
         "min_atr": 0.75
     },
+    "Sector ETFs": {
+        "tickers": "XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU",
+        "buffer": 1.5,
+        "rvol": 1.00,
+        "min_atr": 0.50
+    },
     "Bond ETFs": {
         "tickers": "SGOV, JPST, JAAA, JBBB, SCYB",
         "buffer": 1.0,
@@ -56,12 +62,6 @@ PRESET_CONFIGS = {
         "buffer": 2.0,
         "rvol": 1.25,
         "min_atr": 0.00
-    },
-"Sector ETFs": {
-        "tickers": "XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU",
-        "buffer": 1.5,
-        "rvol": 1.00,
-        "min_atr": 0.50
     }
 }
 
@@ -243,6 +243,11 @@ if "current_preset" not in st.session_state:
 
 st.sidebar.header("Screener Configuration")
 
+# --- Primary Action Button (Top Positioned) ---
+run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_container_width=True)
+
+st.sidebar.divider()
+
 # Preset Dropdown Selector
 selected_preset = st.sidebar.selectbox(
     "Target Instance Preset:",
@@ -275,7 +280,7 @@ try:
 except ValueError:
     default_min_atr = active_defaults["min_atr"]
 
-# Sidebar Inputs
+# Sidebar Parameter Inputs
 ticker_input = st.sidebar.text_area(
     "Watchlist Tickers (comma-separated):", 
     value=default_tickers,
@@ -320,8 +325,7 @@ st.query_params["buffer"] = f"{buffer_setting:.1f}"
 st.query_params["rvol"] = f"{rvol_setting:.2f}"
 st.query_params["min_atr"] = f"{min_atr_setting:.2f}"
 
-run_screener = st.sidebar.button("Run Screener", type="primary")
-
+# Execution Logic
 if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
     st.session_state["ran_once"] = True
     
