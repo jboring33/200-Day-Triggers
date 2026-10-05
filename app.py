@@ -33,6 +33,12 @@ PRESET_CONFIGS = {
         "rvol": 1.10,
         "min_atr": 1.50
     },
+    "Market Traction & RS Leaders": {
+        "tickers": "LLY, WMT, COST, BRK-B, GE, ETN, PWR, VRT, RTX, IJH, EWJ",
+        "buffer": 2.0,
+        "rvol": 0.80,
+        "min_atr": 0.75
+    },
     "Sector ETFs": {
         "tickers": "XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU",
         "buffer": 2.0,
@@ -434,7 +440,7 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
 - **WHY IT MATTERS:** Breakouts occurring on low volume (<1.0x) frequently fail or reverse. RVOL confirmation ensures institutional participation.
 - **RECOMMENDED SETTINGS:**
   - **0.1x - 0.5x:** For illiquid instruments, fixed income (bonds), or covered call ETFs where volume spikes are rare.
-  - **0.8x - 1.0x:** Default for broad index ETFs and standard sector tickers.
+  - **0.8x - 1.0x:** Default for broad index ETFs, relative strength leaders, and standard sector tickers.
   - **1.1x - 1.5x+:** For high-beta tech equities (Mag 7), momentum stocks, or crypto to filter out low-conviction fakeouts.
 
 #### 4. Average True Range / Min ATR (%) [Current: {min_atr:.2f}%]
