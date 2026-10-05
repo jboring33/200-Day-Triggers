@@ -2,7 +2,7 @@
 Repository: 200 Day Triggers
 Description: Streamlit Web Application for Macro (200 EMA) and Short-Term (20 EMA / 50 SMA)
              Trend & Volatility Screening with ATR Dynamic Buffers, ATR% Filters, RVOL Volume Confirmation,
-             Preset Instance Routing, and Dynamic URL Parameter Persistence.
+             Daily/Weekly Timeframe Selection, Preset Instance Routing, Parameter Guidance, and URL Persistence.
 """
 
 import streamlit as st
@@ -19,18 +19,18 @@ st.set_page_config(
 
 REPO_NAME = "200 Day Triggers"
 
-# --- Preset Strategy Configurations ---
+# --- Preset Strategy Configurations (Optimized for Weeks/Months Holding Horizons) ---
 PRESET_CONFIGS = {
     "Broad Market": {
         "tickers": "SPY, QQQ, DJIA, EMXC, VEA",
-        "buffer": 1.5,
-        "rvol": 1.00,
+        "buffer": 2.0,
+        "rvol": 0.80,
         "min_atr": 0.75
     },
     "Sector ETFs": {
         "tickers": "XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU",
-        "buffer": 1.5,
-        "rvol": 1.00,
+        "buffer": 2.0,
+        "rvol": 0.85,
         "min_atr": 0.50
     },
     "Bond ETFs": {
@@ -47,20 +47,20 @@ PRESET_CONFIGS = {
     },
     "Dividend ETFs": {
         "tickers": "USMV, SPHD, SCHD, VYM",
-        "buffer": 1.5,
-        "rvol": 1.00,
+        "buffer": 2.0,
+        "rvol": 0.75,
         "min_atr": 0.50
     },
     "Speculative & Commodities": {
         "tickers": "FBTC, IBIT, IAUM, GLD, SLV",
-        "buffer": 3.5,
-        "rvol": 1.50,
+        "buffer": 4.0,
+        "rvol": 1.25,
         "min_atr": 2.00
     },
     "Custom": {
         "tickers": "SPY, QQQ, NVDA",
         "buffer": 2.0,
-        "rvol": 1.25,
+        "rvol": 1.00,
         "min_atr": 0.00
     }
 }
@@ -78,16 +78,20 @@ def calculate_atr(df, window=14):
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
     return tr.rolling(window=window).mean()
 
-def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5, default_buffer_pct=0.015, rvol_threshold=1.00):
+def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, default_buffer_pct=0.020, rvol_threshold=0.80):
     """Evaluates tickers across Macro (200 EMA), Short-Term (20 EMA / 50 SMA) trends, ATR% metrics, and RVOL volume logic."""
     results = []
     
+    # Set lookback period based on selected interval
+    lookback_period = "10y" if interval == "1wk" else "2y"
+    timeframe_label = "Weekly" if interval == "1wk" else "Daily"
+    
     for ticker in tickers:
         try:
-            df = yf.download(ticker, period=lookback_period, auto_adjust=True, progress=False)
+            df = yf.download(ticker, period=lookback_period, interval=interval, auto_adjust=True, progress=False)
             
             if df.empty or len(df) < 200 + slope_window:
-                st.warning(f"Skipping {ticker}: Insufficient historical data (requires >205 trading days).")
+                st.warning(f"Skipping {ticker}: Insufficient historical data for {timeframe_label} timeframe (requires >205 bars).")
                 continue
             
             close = df['Close']
@@ -103,10 +107,12 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             curr_price = float(close.iloc[-1])
             curr_volume = float(volume.iloc[-1])
             
+            # RVOL Calculation (Current Volume / 20-Bar SMA Volume)
             vol_20_sma = float(volume.rolling(window=20).mean().iloc[-1])
             rvol = curr_volume / vol_20_sma if vol_20_sma > 0 else 1.0
             rvol_confirmed = rvol >= rvol_threshold
             
+            # Moving Average Calculations
             ema20 = close.ewm(span=20, adjust=False).mean()
             sma50 = close.rolling(window=50).mean()
             ema200 = close.ewm(span=200, adjust=False).mean()
@@ -118,6 +124,7 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             curr_sma200 = float(sma200.iloc[-1])
             prev_ema200 = float(ema200.iloc[-(slope_window + 1)])
             
+            # Volatility Calculations (ATR & ATR%)
             atr = float(calculate_atr(df_clean).iloc[-1])
             atr_pct = (atr / curr_price) * 100
             effective_buffer_pct = max(default_buffer_pct, (atr / curr_price) * 1.5)
@@ -125,6 +132,7 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             upper_threshold = curr_ema200 * (1 + effective_buffer_pct)
             lower_threshold = curr_ema200 * (1 - effective_buffer_pct)
             
+            # Slope Calculation
             ema_diff_pct = ((curr_ema200 - prev_ema200) / prev_ema200) * 100
             if ema_diff_pct > 0.05:
                 slope = "UP"
@@ -157,6 +165,7 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
             vol_str = f"RVOL: {rvol:.2f}x ({vol_label})"
             pct_from_ema200 = ((curr_price - curr_ema200) / curr_ema200) * 100
             
+            # Signal Logic
             if curr_price > upper_threshold and slope in ["UP", "FLAT"]:
                 if above_20_ema and above_50_sma:
                     if rvol_confirmed:
@@ -189,8 +198,10 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                 full_signal = "WATCH / CAUTION"
                 reason = f"Price crossed EMA but slope ({slope}) or buffer does not confirm exit/entry."
 
+            # Construct flyover summary with Timeframe context
             flyover_summary = (
                 f"[{full_signal}] {reason} | "
+                f"Timeframe: {timeframe_label} | "
                 f"Price: ${curr_price:.2f} | "
                 f"{vol_str} | "
                 f"ATR%: {atr_pct:.2f}% | "
@@ -208,6 +219,7 @@ def analyze_enhanced_sma_strategy(tickers, lookback_period="2y", slope_window=5,
                 "Ticker": ticker,
                 "Trigger Details": flyover_summary,
                 "Full Signal": full_signal,
+                "Timeframe": timeframe_label,
                 "Price": round(curr_price, 2),
                 "RVOL": round(rvol, 2),
                 "ATR (%)": round(atr_pct, 2),
@@ -233,6 +245,7 @@ st.caption("Last updated: " + datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 # --- URL Parameter & State Management ---
 query_params = st.query_params
 url_preset = query_params.get("preset", "Broad Market")
+url_interval = query_params.get("interval", "1d")
 
 if url_preset not in PRESET_CONFIGS:
     url_preset = "Broad Market"
@@ -248,6 +261,15 @@ run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_contai
 
 st.sidebar.divider()
 
+# Timeframe Selector
+timeframe_option = st.sidebar.radio(
+    "Analysis Timeframe:",
+    options=["Daily (1d)", "Weekly (1wk)"],
+    index=1 if url_interval == "1wk" else 0,
+    help="Select bar aggregation. Weekly smoothing eliminates daily whipsaws for longer-term position trades."
+)
+interval_code = "1wk" if "Weekly" in timeframe_option else "1d"
+
 # Preset Dropdown Selector
 selected_preset = st.sidebar.selectbox(
     "Target Instance Preset:",
@@ -256,14 +278,14 @@ selected_preset = st.sidebar.selectbox(
     help="Select a tuned instance preset to automatically populate parameters based on asset class volatility profiles."
 )
 
-# Detect if the preset changed in the UI and load standard preset values
+# Detect if preset changed
 preset_changed = selected_preset != st.session_state["current_preset"]
 if preset_changed:
     st.session_state["current_preset"] = selected_preset
 
 active_defaults = PRESET_CONFIGS[selected_preset]
 
-# Resolve dynamic values (URL parameters take priority unless preset selector was toggled)
+# Resolve parameter defaults
 default_tickers = active_defaults["tickers"] if preset_changed else query_params.get("tickers", active_defaults["tickers"])
 try:
     default_buffer = active_defaults["buffer"] if preset_changed else float(query_params.get("buffer", active_defaults["buffer"]))
@@ -280,7 +302,7 @@ try:
 except ValueError:
     default_min_atr = active_defaults["min_atr"]
 
-# Sidebar Parameter Inputs
+# Sidebar Inputs
 ticker_input = st.sidebar.text_area(
     "Watchlist Tickers (comma-separated):", 
     value=default_tickers,
@@ -294,7 +316,7 @@ buffer_setting = st.sidebar.slider(
     max_value=5.0, 
     value=default_buffer, 
     step=0.5,
-    help="Sets the percentage dead zone around the 200 EMA to avoid false breakout whipsaws. Compared automatically against 1.5x ATR%."
+    help="Percentage dead zone around the 200 EMA to avoid false breakout whipsaws. Compared automatically against 1.5x ATR%."
 )
 
 rvol_setting = st.sidebar.slider(
@@ -303,16 +325,16 @@ rvol_setting = st.sidebar.slider(
     max_value=2.5, 
     value=default_rvol, 
     step=0.05,
-    help="Minimum Relative Volume required to confirm trend breakout strength (Current Volume / 20-Day SMA Volume)."
+    help="Minimum Relative Volume required to confirm trend breakout strength (Current Volume / 20-Bar SMA Volume)."
 )
 
 min_atr_setting = st.sidebar.slider(
-    "Min Daily Volatility / ATR (%)", 
+    "Min Daily/Weekly Volatility / ATR (%)", 
     min_value=0.0, 
     max_value=5.0, 
     value=default_min_atr, 
     step=0.25,
-    help="Filters out assets whose 14-day Average True Range is below this percentage of price."
+    help="Filters out assets whose 14-bar Average True Range is below this percentage of price."
 )
 
 # Synchronize URL Query Parameters live
@@ -321,6 +343,7 @@ if clean_ticker_str:
     st.query_params["tickers"] = clean_ticker_str
 
 st.query_params["preset"] = selected_preset
+st.query_params["interval"] = interval_code
 st.query_params["buffer"] = f"{buffer_setting:.1f}"
 st.query_params["rvol"] = f"{rvol_setting:.2f}"
 st.query_params["min_atr"] = f"{min_atr_setting:.2f}"
@@ -332,9 +355,10 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
     tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
     
     if tickers_list:
-        with st.spinner(f"Fetching market data and calculating indicators for [{selected_preset}] preset..."):
+        with st.spinner(f"Fetching market data ({interval_code}) and calculating indicators for [{selected_preset}] preset..."):
             df_results = analyze_enhanced_sma_strategy(
                 tickers_list, 
+                interval=interval_code,
                 default_buffer_pct=buffer_setting / 100.0,
                 rvol_threshold=rvol_setting
             )
@@ -360,27 +384,35 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
                     "Status & Signal": st.column_config.TextColumn(
                         "Status & Signal", 
                         width="small",
-                        help="Short trend status."
+                        help="Short trend status. See reference guide below."
                     ),
                     "Ticker": st.column_config.TextColumn("Ticker", width="small"),
                     "Trigger Details": st.column_config.TextColumn(
                         "Trigger Details", 
                         width="large",
-                        help="Hover over any cell to view full price, RVOL, ATR%, 20 EMA, 50 SMA, 200 EMA, and volatility buffer metrics"
+                        help="Hover over any cell to view full price, timeframe, RVOL, ATR%, 20 EMA, 50 SMA, 200 EMA, and volatility buffer metrics"
                     ),
                 }
             )
             
-            csv = df_results.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label=f"📥 Download CSV Report ({selected_preset})",
-                data=csv,
-                file_name=f"200_day_triggers_{selected_preset.lower().replace(' ', '_')}.csv",
-                mime="text/csv"
-            )
-        else:
-            st.info("No tickers matched the current ATR% volatility filter criteria.")
-    else:
-        st.warning("Please enter at least one ticker in the sidebar to run the screener.")
-else:
-    st.info("👈 Select an Instance Preset in the sidebar and click 'Run Screener' to analyze.")
+            # --- Restored Guidance Section ---
+            with st.expander("📖 Signal Reference Guide & Parameter Tuning", expanded=False):
+                guide_template = """
+### Signal Definitions
+- **Bullish (BUY / BULLISH HOLD):** Price is above the 200 EMA (plus dynamic buffer), short-term MAs are aligned, and RVOL confirms **STRONG BUYING VOLUME** (>= {rvol:.2f}x).
+- **Pullback (MACRO BULL / WAIT FOR ENTRY):** Macro trend remains long-term bullish (>200 EMA), but price is pulling back below short-term MAs. Excellent buy/entry zone for swing/position traders.
+- **Warning (BULLISH / LOW VOLUME or CAUTION):** Price is above targets, but volume status is **LOW VOLUME** (below the {rvol:.2f}x threshold), signaling low-volume breakout risk; or slope/buffer conditions are incomplete.
+- **Neutral (NOISE BUFFER ZONE):** Price is consolidating within the noise buffer zone around the 200 EMA. Avoid buying or selling to prevent whipsaws.
+- **Bearish (SELL / CASH OUT):** Price is below the 200 EMA (minus dynamic buffer) with a downward slope and **STRONG SELLING VOLUME**.
+
+---
+
+### Parameter Tuning Guide: What, When & Why
+
+#### 1. Timeframe Selection [Current: {timeframe}]
+- **Daily (1d):** Best for active swing traders monitoring moves over days or weeks.
+- **Weekly (1wk):** Ideal for buy-and-hold and long-term position traders holding across months. Eliminates midweek volatility noise.
+
+#### 2. Base Buffer Noise Filter (%) [Current: {buffer:.1f}%]
+- **WHAT IT IS:** Sets a mandatory percentage dead zone around the 200 EMA. The app automatically compares this base value against `1.5 * ATR%` and uses whichever is larger.
+- **WHEN TO LOWER (1.0% - 1.5%):** Ultra
