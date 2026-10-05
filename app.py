@@ -56,7 +56,7 @@ PRESET_CONFIGS = {
         "buffer": 2.0,
         "rvol": 1.25,
         "min_atr": 0.00
-    }
+    },
 "Sector ETFs": {
         "tickers": "XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU",
         "buffer": 1.5,
