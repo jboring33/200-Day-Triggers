@@ -57,6 +57,12 @@ PRESET_CONFIGS = {
         "rvol": 1.25,
         "min_atr": 0.00
     }
+"Sector ETFs": {
+        "tickers": "XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU",
+        "buffer": 1.5,
+        "rvol": 1.00,
+        "min_atr": 0.50
+    }
 }
 
 def calculate_atr(df, window=14):
