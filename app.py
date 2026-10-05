@@ -27,6 +27,12 @@ PRESET_CONFIGS = {
         "rvol": 0.80,
         "min_atr": 0.75
     },
+    "Mag 7 Tech": {
+        "tickers": "AAPL, MSFT, NVDA, GOOGL, AMZN, META, TSLA",
+        "buffer": 2.5,
+        "rvol": 1.10,
+        "min_atr": 1.50
+    },
     "Sector ETFs": {
         "tickers": "XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU",
         "buffer": 2.0,
@@ -429,7 +435,7 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
 - **RECOMMENDED SETTINGS:**
   - **0.1x - 0.5x:** For illiquid instruments, fixed income (bonds), or covered call ETFs where volume spikes are rare.
   - **0.8x - 1.0x:** Default for broad index ETFs and standard sector tickers.
-  - **1.2x - 1.5x+:** For momentum equities, tech growth stocks, or crypto to filter out low-conviction fakeouts.
+  - **1.1x - 1.5x+:** For high-beta tech equities (Mag 7), momentum stocks, or crypto to filter out low-conviction fakeouts.
 
 #### 4. Average True Range / Min ATR (%) [Current: {min_atr:.2f}%]
 - **WHAT IT IS:** The 14-period Average True Range expressed as a percentage of current price (`(14-ATR / Price) * 100`). Measures raw historical price dispersion.
@@ -437,7 +443,7 @@ if run_screener or ("ran_once" in st.session_state and clean_ticker_str):
 - **RECOMMENDED SETTINGS:**
   - **0.00%:** Keep at zero to evaluate all tickers regardless of volatility (useful for bonds/dividends).
   - **0.50% - 0.75%:** Standard lower bound for equities to eliminate stagnant stocks.
-  - **1.50% - 2.00%+:** Screening specifically for high-volatility, fast-moving assets (e.g. Bitcoin ETFs, high-beta tech).
+  - **1.50% - 2.00%+:** Screening specifically for high-volatility, fast-moving assets (e.g. Mag 7, Bitcoin ETFs, high-beta tech).
 """
                 st.markdown(
                     guide_template.format(
