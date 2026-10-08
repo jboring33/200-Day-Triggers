@@ -191,13 +191,12 @@ def analyze_enhanced_sma_strategy(
           "BULLISH (INFLOW)" if obv_slope > 0 else "BEARISH (OUTFLOW)"
       )
 
-      # --- Enhanced Bollinger Band Volatility Evaluation ---
+      # --- Bollinger Band Volatility Evaluation ---
       sma20 = close.rolling(20).mean()
       std20 = close.rolling(20).std()
       upper_bb = float((sma20 + (std20 * 2)).iloc[-1])
       lower_bb = float((sma20 - (std20 * 2)).iloc[-1])
 
-      # Width Series calculation
       bb_width_series = ((sma20 + (std20 * 2)) - (sma20 - (std20 * 2))) / sma20
       curr_bb_width = float(bb_width_series.iloc[-1]) * 100
       avg_50_bb_width = float(bb_width_series.rolling(50).mean().iloc[-1]) * 100
@@ -305,29 +304,22 @@ def analyze_enhanced_sma_strategy(
 
       pct_ema200 = ((curr_price - curr_ema200) / curr_ema200) * 100.0
 
-      trigger_text = (
-          f"[{signal}] {msg} | P: ${curr_price:.2f} | ADX: {adx:.1f} | "
-          f"RSI: {rsi:.1f} | Stoch: {curr_stoch:.1f} | OBV: {obv_label} | "
-          f"Vol: {volume_status} | BB: {bb_commentary} | RVOL: {rvol:.2f}x | "
-          f"200EMA: ${curr_ema200:.2f} ({pct_ema200:+.2f}%)"
-      )
-
       results.append({
-          "Status & Signal": status,
           "Ticker": ticker,
-          "Trigger Details": trigger_text,
-          "Full Signal": signal,
+          "Status": status,
+          "Signal": signal,
           "Price": round(curr_price, 2),
-          "ADX": round(adx, 1),
-          "RSI": round(rsi, 1),
-          "Stoch %K": round(curr_stoch, 1),
+          "200 EMA": round(curr_ema200, 2),
+          "% vs 200 EMA": f"{pct_ema200:+.2f}%",
+          "RVOL": round(rvol, 2),
           "Volume Signal": volume_status,
           "OBV Signal": obv_label,
-          "Bollinger Status": bb_commentary,
-          "RVOL": round(rvol, 2),
+          "RSI": round(rsi, 1),
+          "Stoch %K": round(curr_stoch, 1),
+          "ADX": round(adx, 1),
           "ATR (%)": round(atr_pct, 2),
-          "200 EMA": round(curr_ema200, 2),
-          "Reason": msg,
+          "Bollinger Status": bb_commentary,
+          "Trigger Rationale": msg,
       })
     except Exception as e:
       st.error(f"Error processing {ticker}: {str(e)}")
@@ -378,36 +370,14 @@ if run_screener:
           rvol_threshold=rvol_setting,
       )
     if not df_results.empty:
-      cols = ["Status & Signal", "Ticker", "Trigger Details"]
-      st.dataframe(df_results[cols], use_container_width=True, hide_index=True)
-
-      st.divider()
-      st.subheader("💡 Trigger Commentary & Analysis")
-
-      for _, row in df_results.iterrows():
-        with st.expander(
-            f"**{row['Ticker']}** - {row['Status & Signal']}"
-            f" ({row['Full Signal']})"
-        ):
-          col1, col2, col3, col4 = st.columns(4)
-          col1.metric("Price", f"${row['Price']}")
-          col2.metric("200 EMA", f"${row['200 EMA']}")
-          col3.metric("RVOL", f"{row['RVOL']}x")
-          col4.metric("Stoch %K", f"{row['Stoch %K']}")
-
-          st.markdown(f"**Trigger Rationale:** {row['Reason']}")
-          st.markdown(
-              f"**Volume Context:** `{row['Volume Signal']}` | **OBV:**"
-              f" `{row['OBV Signal']}`"
-          )
-          st.markdown(f"**Bollinger Bands:** `{row['Bollinger Status']}`")
-          st.markdown(
-              f"**Key Metrics:** ADX: `{row['ADX']}` | RSI: `{row['RSI']}` | ATR:"
-              f" `{row['ATR (%)']}%`"
-          )
+      st.subheader("📊 Unified Trigger & Analysis Matrix")
+      st.dataframe(df_results, use_container_width=True, hide_index=True)
 
       st.divider()
       csv_data = df_results.to_csv(index=False)
       st.download_button(
-          "📥 Download Full CSV", csv_data, "200_day_triggers.csv", "text/csv"
+          "📥 Download Full Table CSV",
+          csv_data,
+          "200_day_triggers.csv",
+          "text/csv",
       )
