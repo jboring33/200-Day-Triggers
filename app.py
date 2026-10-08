@@ -175,9 +175,4 @@ def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, defaul
             bb_width = ((upper_bb - lower_bb) / float(sma20.iloc[-1])) * 100
             
             # 20-period historical minimum band width to detect Squeeze
-            hist_bb_width = ((sma20 + (std20 * 2)) - (sma20 - (std20 * 2))) / sma20
-            min_bb_width = float(hist_bb_width.rolling(window=50).min().iloc[-1]) * 100
-            is_squeeze = bb_width <= (min_bb_width * 1.15)
-            
-            # Volume Label Logic
-            if rvol_confirmed and curr_price >=
+            hist_bb_width = ((sma20 + (std20 * 2)) - (sma20 -
