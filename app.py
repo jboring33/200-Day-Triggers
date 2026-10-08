@@ -52,7 +52,7 @@ PRESET_CONFIGS = {
         "rvol": 0.10,
         "min_atr": 0.00,
         "rationale": (
-            "Fixed-income and ultra-short ETFs move in tight tight price bands with lower volume variance. A tight 1.0% buffer prevents "
+            "Fixed-income and ultra-short ETFs move in tight price bands with lower volume variance. A tight 1.0% buffer prevents "
             "false macro regime changes, an RVOL of 0.10 prevents false non-volume flags, and an ATR of 0.00% ensures low-volatility income assets aren't filtered out."
         ),
     },
@@ -215,61 +215,4 @@ def analyze_enhanced_sma_strategy(
 
             obv_slope = float(calculate_obv_slope(close, volume).iloc[-1])
             obv_label = (
-                "BULLISH (INFLOW)" if obv_slope > 0 else "BEARISH (OUTFLOW)"
-            )
-
-            # --- Bollinger Band Volatility Evaluation ---
-            sma20 = close.rolling(20).mean()
-            std20 = close.rolling(20).std()
-            upper_bb = float((sma20 + (std20 * 2)).iloc[-1])
-            lower_bb = float((sma20 - (std20 * 2)).iloc[-1])
-
-            bb_width_series = ((sma20 + (std20 * 2)) - (sma20 - (std20 * 2))) / sma20
-            curr_bb_width = float(bb_width_series.iloc[-1]) * 100
-            avg_50_bb_width = float(bb_width_series.rolling(50).mean().iloc[-1]) * 100
-            min_50_bb_width = float(bb_width_series.rolling(50).min().iloc[-1]) * 100
-
-            is_squeeze = curr_bb_width <= (min_50_bb_width * 1.15)
-            is_expanding = curr_bb_width > (avg_50_bb_width * 1.20)
-
-            if is_squeeze:
-                bb_commentary = f"SQUEEZE ({curr_bb_width:.1f}%) - Tight compression before expansion"
-            elif is_expanding:
-                bb_commentary = f"EXPANDING HIGH VOLATILITY ({curr_bb_width:.1f}% vs avg {avg_50_bb_width:.1f}%) - Wider than normal bands"
-            elif curr_price >= upper_bb:
-                bb_commentary = f"UPPER BAND STRETCH (${upper_bb:.2f}) - Highly Extended"
-            elif curr_price <= lower_bb:
-                bb_commentary = f"LOWER BAND STRETCH (${lower_bb:.2f}) - Oversold Conditions"
-            else:
-                bb_commentary = f"NORMAL RANGE ({curr_bb_width:.1f}% width) - Mid-band: ${sma20.iloc[-1]:.2f}"
-
-            ema_diff = ((curr_ema200 - prev_ema200) / prev_ema200) * 100
-            slope = (
-                "UP" if ema_diff > 0.05 else ("DOWN" if ema_diff < -0.05 else "FLAT")
-            )
-
-            is_above_upper = curr_price > upper_th
-            is_below_lower = curr_price < lower_th
-            is_in_buffer = lower_th <= curr_price <= upper_th
-
-            if is_above_upper and slope in ["UP", "FLAT"]:
-                if adx < 20:
-                    status, signal = "⚪ Consolidating", "NO TREND"
-                    msg = f"ADX ({adx:.1f}) < 20 indicates non-trending price action."
-                elif rsi > 70 or curr_stoch > 80:
-                    status, signal = "🟡 Overbought", "HOLD"
-                    msg = f"RSI ({rsi:.1f}) or Stoch ({curr_stoch:.1f}) > thresholds indicates momentum extension."
-                elif obv_slope < 0 and rsi < 50:
-                    status, signal = "🔴 Divergence", "WARNING"
-                    msg = "Negative OBV volume outflow signals active distribution."
-                elif is_squeeze:
-                    status, signal = "🟡 Squeeze", "WATCH"
-                    msg = f"Bollinger Band Squeeze active ({curr_bb_width:.1f}% width)."
-                elif (
-                    curr_price > curr_ema20
-                    and curr_price > curr_sma50
-                    and rvol_confirmed
-                ):
-                    status, signal = "🟢 Bullish", "ACCUMULATE"
-                    msg = f"Confirmed breakout above buffer (RVOL: {rvol:.2f}x)."
-                elif curr_price <= curr_ema20 or curr_price
+                "B
