@@ -113,83 +113,27 @@ def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, defaul
             ema_diff = ((curr_ema200 - prev_ema200) / prev_ema200) * 100
             slope = "UP" if ema_diff > 0.05 else ("DOWN" if ema_diff < -0.05 else "FLAT")
             
-            # Direct status, signal, and concise reason mapping
+            # Direct status, signal, and clear reason mapping
             if curr_price > upper_th and slope in ["UP", "FLAT"]:
                 if adx < 20:
-                    status, signal, msg = "⚪ Consolidating", "NO TREND", f"ADX ({adx:.1f}) < 20 (Range-bound)"
+                    status, signal, msg = "⚪ Consolidating", "NO TREND", f"ADX ({adx:.1f}) < 20 indicates non-trending price action."
                 elif rsi > 70:
-                    status, signal, msg = "🟡 Overbought", "HOLD", f"RSI ({rsi:.1f}) > 70 (Extended)"
+                    status, signal, msg = "🟡 Overbought", "HOLD", f"RSI ({rsi:.1f}) > 70 indicates momentum extension."
                 elif obv_slope < 0 and rsi < 50:
-                    status, signal, msg = "🔴 Divergence", "WARNING", "Negative OBV volume outflow"
+                    status, signal, msg = "🔴 Divergence", "WARNING", "Negative OBV volume outflow signals active distribution."
                 elif is_squeeze:
-                    status, signal, msg = "🟡 Squeeze", "WATCH", f"BB Squeeze active ({bb_width:.1f}%)"
+                    status, signal, msg = "🟡 Squeeze", "WATCH", f"Bollinger Band Squeeze active ({bb_width:.1f}% width)."
                 elif curr_price > curr_ema20 and curr_price > curr_sma50 and rvol_confirmed:
-                    status, signal, msg = "🟢 Bullish", "ACCUMULATE", f"Breakout confirmed (RVOL: {rvol:.2f}x)"
+                    status, signal, msg = "🟢 Bullish", "ACCUMULATE", f"Confirmed breakout above buffer (RVOL: {rvol:.2f}x)."
                 elif curr_price <= curr_ema20 or curr_price <= curr_sma50:
-                    status, signal, msg = "🟡 Pullback", "WAIT", "Pullback below short MAs"
+                    status, signal, msg = "🟡 Pullback", "WAIT", "Macro trend is UP, but price is pulling back below key short MAs."
                 else:
-                    status, signal, msg = "🟡 Warning", "LOW VOLUME", f"RVOL ({rvol:.2f}x) below threshold"
+                    status, signal, msg = "🟡 Warning", "LOW VOLUME", f"Price above buffer, but RVOL ({rvol:.2f}x) lacks volume confirmation."
             elif curr_price < lower_th and slope == "DOWN":
                 if adx < 20:
-                    status, signal, msg = "⚪ Consolidating", "WEAK BEAR", f"ADX ({adx:.1f}) < 20"
+                    status, signal, msg = "⚪ Consolidating", "WEAK BEAR", f"Price below 200 EMA, but weak ADX ({adx:.1f})."
                 elif rvol_confirmed:
-                    status, signal, msg = "🔴 Bearish", "SELL", f"Selling volume confirmed ({rvol:.2f}x)"
+                    status, signal, msg = "🔴 Bearish", "SELL", f"Selling volume confirmed below buffer (RVOL: {rvol:.2f}x)."
                 else:
-                    status, signal, msg = "🔴 Bearish", "SELL LOW VOL", f"Price < buffer ({rvol:.2f}x)"
+                    status, signal, msg = "🔴 Bearish", "SELL LOW VOL", f"Price below noise buffer with DOWN slope (RVOL: {rvol:.2f}x)."
             elif lower_th <= curr_price <= upper_th:
-                status, signal, msg = "⚪ Neutral", "BUFFER ZONE", f"Within +/-{effective_buffer*100:.1f}% 200 EMA"
-            else:
-                status, signal, msg = "🟡 Warning", "CAUTION", f"Unconfirmed EMA cross ({slope})"
-
-            pct_ema200 = ((curr_price - curr_ema200) / curr_ema200) * 100
-            obv_label = "INFLOW" if obv_slope > 0 else "OUTFLOW"
-            
-            trigger_text = f"[{signal}] {msg} | P: ${curr_price:.2f} | ADX: {adx:.1f} | RSI: {rsi:.1f} | OBV: {obv_label} | BBW: {bb_width:.1f}% | RVOL: {rvol:.2f}x | ATR%: {atr_pct:.2f}% | 200EMA: ${curr_ema200:.2f} ({pct_ema200:+.2f}%)"
-
-            results.append({
-                "Status & Signal": status,
-                "Ticker": ticker,
-                "Trigger Details": trigger_text,
-                "Full Signal": signal,
-                "Price": round(curr_price, 2),
-                "ADX": round(adx, 1),
-                "RSI": round(rsi, 1),
-                "RVOL": round(rvol, 2),
-                "ATR (%)": round(atr_pct, 2),
-                "200 EMA": round(curr_ema200, 2),
-                "Reason": msg
-            })
-        except Exception as e:
-            st.error(f"Error processing {ticker}: {str(e)}")
-            
-    return pd.DataFrame(results)
-
-# --- UI Setup ---
-st.title("📈 " + REPO_NAME)
-st.caption("Last updated: " + datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-
-st.sidebar.header("Screener Configuration")
-run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_container_width=True)
-
-selected_preset = st.sidebar.selectbox("Target Instance Preset:", list(PRESET_CONFIGS.keys()))
-active_defaults = PRESET_CONFIGS[selected_preset]
-
-ticker_input = st.sidebar.text_area("Watchlist Tickers:", value=active_defaults["tickers"])
-buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
-rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
-min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
-
-if run_screener:
-    tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
-    if tickers_list:
-        with st.spinner("Analyzing market data..."):
-            df_results = analyze_enhanced_sma_strategy(
-                tickers_list, 
-                default_buffer_pct=buffer_setting / 100.0, 
-                rvol_threshold=rvol_setting
-            )
-        if not df_results.empty:
-            cols = ["Status & Signal", "Ticker", "Trigger Details"]
-            st.dataframe(df_results[cols], use_container_width=True, hide_index=True)
-            csv = df_results.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download CSV", csv, "200_day_triggers.csv", "text/csv")
