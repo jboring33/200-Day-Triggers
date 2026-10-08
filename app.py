@@ -190,29 +190,4 @@ def analyze_enhanced_sma_strategy(
             elif rvol >= 1.25 and not is_green_day:
                 volume_status = "BEARISH (HEAVY SELLING)"
             else:
-                volume_status = "NORMAL / MODERATE"
-
-            ema20 = close.ewm(span=20, adjust=False).mean()
-            sma50 = close.rolling(50).mean()
-            ema200 = close.ewm(span=200, adjust=False).mean()
-
-            curr_ema20 = float(ema20.iloc[-1])
-            curr_sma50 = float(sma50.iloc[-1])
-            curr_ema200 = float(ema200.iloc[-1])
-            prev_ema200 = float(ema200.iloc[-(slope_window + 1)])
-
-            atr = float(calculate_atr(df_clean).iloc[-1])
-            atr_pct = (atr / curr_price) * 100
-            effective_buffer = max(default_buffer_pct, (atr / curr_price) * 1.5)
-
-            upper_th = curr_ema200 * (1.0 + effective_buffer)
-            lower_th = curr_ema200 * (1.0 - effective_buffer)
-
-            rsi = float(calculate_rsi(close).iloc[-1])
-            adx = float(calculate_adx(df_clean).iloc[-1])
-            k_stoch, d_stoch = calculate_stochastic(df_clean)
-            curr_stoch = float(k_stoch.iloc[-1])
-
-            obv_slope = float(calculate_obv_slope(close, volume).iloc[-1])
-            obv_label = (
-                "B
+                volume_status = "NORMAL / MODERATE
