@@ -22,6 +22,12 @@ PRESET_CONFIGS = {
         "rvol": 0.80,
         "min_atr": 0.75,
     },
+    "Mag7": {
+        "tickers": "NVDA, AAPL, MSFT, AMZN, GOOGL, META, TSLA",
+        "buffer": 2.5,
+        "rvol": 1.00,
+        "min_atr": 1.00,
+    },
     "Sector ETFs": {
         "tickers": "XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU, VGT",
         "buffer": 2.0,
