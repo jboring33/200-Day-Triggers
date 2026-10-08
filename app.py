@@ -42,16 +42,12 @@ def calculate_adx(df, window=14):
     high, low, close = df['High'], df['Low'], df['Close']
     up_move = high - high.shift(1)
     down_move = low.shift(1) - low
-    
     plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
     minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
-    
     tr = pd.concat([high - low, (high - close.shift(1)).abs(), (low - close.shift(1)).abs()], axis=1).max(axis=1)
     tr_smooth = tr.rolling(window=window).mean()
-    
     plus_di = 100 * (pd.Series(plus_dm, index=df.index).rolling(window=window).mean() / tr_smooth)
     minus_di = 100 * (pd.Series(minus_dm, index=df.index).rolling(window=window).mean() / tr_smooth)
-    
     dx = 100 * (abs(plus_di - minus_di) / (plus_di + minus_di))
     return dx.rolling(window=window).mean()
 
@@ -77,7 +73,6 @@ def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, defaul
             volume = df['Volume'].squeeze()
             
             df_clean = pd.DataFrame({'High': high, 'Low': low, 'Close': close})
-            
             curr_price = float(close.iloc[-1])
             curr_volume = float(volume.iloc[-1])
             
@@ -88,12 +83,10 @@ def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, defaul
             ema20 = close.ewm(span=20, adjust=False).mean()
             sma50 = close.rolling(50).mean()
             ema200 = close.ewm(span=200, adjust=False).mean()
-            sma200 = close.rolling(200).mean()
             
             curr_ema20 = float(ema20.iloc[-1])
             curr_sma50 = float(sma50.iloc[-1])
             curr_ema200 = float(ema200.iloc[-1])
-            curr_sma200 = float(sma200.iloc[-1])
             prev_ema200 = float(ema200.iloc[-(slope_window + 1)])
             
             atr = float(calculate_atr(df_clean).iloc[-1])
@@ -117,98 +110,43 @@ def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, defaul
             min_bb = float(hist_bb.rolling(50).min().iloc[-1]) * 100
             is_squeeze = bb_width <= (min_bb * 1.15)
             
-            vol_label = "STRONG BUYING" if rvol_confirmed and curr_price >= curr_ema20 else ("STRONG SELLING" if rvol_confirmed else "LOW VOLUME")
-            
             ema_diff = ((curr_ema200 - prev_ema200) / prev_ema200) * 100
             slope = "UP" if ema_diff > 0.05 else ("DOWN" if ema_diff < -0.05 else "FLAT")
             
-            # Decision Tree logic with concise reasons to avoid string truncation
+            # Single-line decision blocks to prevent syntax breaks
             if curr_price > upper_th and slope in ["UP", "FLAT"]:
                 if adx < 20:
-                    status_short, full_signal = "⚪ Consolidating", "CONSOLIDATION / NO TREND"
-                    reason = f"Price >200 EMA, but weak ADX ({adx:.1f}) indicates sideways movement."
+                    status_short, full_signal, reason = "⚪ Consolidating", "CONSOLIDATION / NO TREND", f"Price >200 EMA, but weak ADX ({adx:.1f}) indicates sideways movement."
                 elif rsi > 70:
-                    status_short, full_signal = "🟡 Overbought", "HOLD / DO NOT ADD"
-                    reason = f"Overbought condition with RSI ({rsi:.1f}) > 70 and BB Width at {bb_width:.1f}%."
+                    status_short, full_signal, reason = "🟡 Overbought", "HOLD / DO NOT ADD", f"Overbought condition with RSI ({rsi:.1f}) > 70 and BB Width at {bb_width:.1f}%."
                 elif obv_slope < 0 and rsi < 50:
-                    status_short, full_signal = "🔴 Divergence", "WARNING / NEAR-TERM DISTRIBUTION"
-                    reason = f"Negative OBV volume flow and weak RSI ({rsi:.1f}) signal distribution."
+                    status_short, full_signal, reason = "🔴 Divergence", "WARNING / NEAR-TERM DISTRIBUTION", f"Negative OBV volume flow and weak RSI ({rsi:.1f}) signal distribution."
                 elif is_squeeze:
-                    status_short, full_signal = "🟡 Squeeze", "WATCH / VOLATILITY SQUEEZE"
-                    reason = f"Bollinger Band squeeze active (BB Width: {bb_width:.1f}%). Watch for expansion."
+                    status_short, full_signal, reason = "🟡 Squeeze", "WATCH / VOLATILITY SQUEEZE", f"Bollinger Band squeeze active (BB Width: {bb_width:.1f}%)."
                 elif curr_price > curr_ema20 and curr_price > curr_sma50 and rvol_confirmed:
-                    status_short, full_signal = "🟢 Bullish", "ACCUMULATE / BREAKOUT"
-                    reason = f"Clear breakout above buffer. ADX={adx:.1f}, RSI={rsi:.1f}, RVOL={rvol:.2f}x."
+                    status_short, full_signal, reason = "🟢 Bullish", "ACCUMULATE / BREAKOUT", f"Clear breakout above buffer. ADX={adx:.1f}, RSI={rsi:.1f}, RVOL={rvol:.2f}x."
                 elif curr_price <= curr_ema20 or curr_price <= curr_sma50:
-                    status_short, full_signal = "🟡 Pullback", "MACRO BULL / WAIT FOR ENTRY"
-                    reason = "Macro trend is UP (>200 EMA), but price is pulling back below short MAs."
+                    status_short, full_signal, reason = "🟡 Pullback", "MACRO BULL / WAIT FOR ENTRY", "Macro trend is UP (>200 EMA), but price is pulling back below short MAs."
                 else:
-                    status_short, full_signal = "🟡 Warning", "BULLISH / LOW VOLUME"
-                    reason = f"Price > 200 EMA buffer, but RVOL ({rvol:.2f}x) is below target."
+                    status_short, full_signal, reason = "🟡 Warning", "BULLISH / LOW VOLUME", f"Price > 200 EMA buffer, but RVOL ({rvol:.2f}x) is below target."
             elif curr_price < lower_th and slope == "DOWN":
                 if adx < 20:
-                    status_short, full_signal = "⚪ Consolidating", "SIDEWAYS / WEAK BEAR TREND"
-                    reason = f"Price < 200 EMA, but weak trend strength with ADX ({adx:.1f})."
+                    status_short, full_signal, reason = "⚪ Consolidating", "SIDEWAYS / WEAK BEAR TREND", f"Price < 200 EMA, but weak trend strength with ADX ({adx:.1f})."
                 elif rvol_confirmed:
-                    status_short, full_signal = "🔴 Bearish", "SELL / CASH OUT"
-                    reason = f"Price < buffer with slope DOWN, confirmed by selling volume (RVOL: {rvol:.2f}x)."
+                    status_short, full_signal, reason = "🔴 Bearish", "SELL / CASH OUT", f"Price < buffer with slope DOWN, confirmed by selling volume (RVOL: {rvol:.2f}x)."
                 else:
-                    status_short, full_signal = "🔴 Bearish", "SELL / LOW VOL DOWN"
-                    reason = f"Price < buffer & slope DOWN (RVOL: {rvol:.2f}x)."
+                    status_short, full_signal, reason = "🔴 Bearish", "SELL / LOW VOL DOWN", f"Price < buffer & slope DOWN (RVOL: {rvol:.2f}x)."
             elif lower_th <= curr_price <= upper_th:
-                status_short, full_signal = "⚪ Neutral", "NOISE BUFFER ZONE"
-                reason = f"Price within +/-{effective_buffer*100:.1f}% noise buffer of 200 EMA."
+                status_short, full_signal, reason = "⚪ Neutral", "NOISE BUFFER ZONE", f"Price within +/-{effective_buffer*100:.1f}% noise buffer of 200 EMA."
             else:
-                status_short, full_signal = "🟡 Warning", "WATCH / CAUTION"
-                reason = f"Price crossed EMA but slope ({slope}) or buffer does not confirm direction."
+                status_short, full_signal, reason = "🟡 Warning", "WATCH / CAUTION", f"Price crossed EMA but slope ({slope}) or buffer does not confirm direction."
 
             pct_ema200 = ((curr_price - curr_ema200) / curr_ema200) * 100
             obv_label = "INFLOW" if obv_slope > 0 else "OUTFLOW"
             
-            flyover = (
-                f"[{full_signal}] {reason} | Timeframe: {timeframe_label} | Price: ${curr_price:.2f} | "
-                f"ADX: {adx:.1f} | RSI: {rsi:.1f} | OBV: {obv_label} | BB Width: {bb_width:.1f}% | "
-                f"RVOL: {rvol:.2f}x | ATR%: {atr_pct:.2f}% | 200 EMA: ${curr_ema200:.2f} ({pct_ema200:+.2f}%)"
-            )
+            flyover = f"[{full_signal}] {reason} | Timeframe: {timeframe_label} | Price: ${curr_price:.2f} \vert{} ADX: {adx:.1f} \vert{} RSI: {rsi:.1f} \vert{} OBV: {obv_label} \vert{} BB Width: {bb_width:.1f}\% \vert{} RVOL: {rvol:.2f}x \vert{} ATR\%: {atr_pct:.2f}\% \vert{} 200 EMA:${curr_ema200:.2f} ({pct_ema200:+.2f}%)"
 
             results.append({
                 "Status & Signal": status_short,
                 "Ticker": ticker,
-                "Trigger Details": flyover,
-                "Full Signal": full_signal,
-                "Price": round(curr_price, 2),
-                "ADX": round(adx, 1),
-                "RSI": round(rsi, 1),
-                "RVOL": round(rvol, 2),
-                "ATR (%)": round(atr_pct, 2),
-                "200 EMA": round(curr_ema200, 2),
-                "Reason": reason
-            })
-        except Exception as e:
-            st.error(f"Error processing {ticker}: {str(e)}")
-            
-    return pd.DataFrame(results)
-
-# --- UI Setup ---
-st.title("📈 " + REPO_NAME)
-st.caption("Last updated: " + datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-
-st.sidebar.header("Screener Configuration")
-run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_container_width=True)
-
-selected_preset = st.sidebar.selectbox("Target Instance Preset:", list(PRESET_CONFIGS.keys()))
-active_defaults = PRESET_CONFIGS[selected_preset]
-
-ticker_input = st.sidebar.text_area("Watchlist Tickers:", value=active_defaults["tickers"])
-buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
-rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
-min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
-
-if run_screener:
-    tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
-    if tickers_list:
-        with st.spinner("Analyzing market data..."):
-            df_results = analyze_enhanced_sma_strategy(
-                tickers_list, 
-                default_buffer_pct=buffer_setting / 100.0,
-                rvol_threshold=rvol_setting
+                "Trigger Details
