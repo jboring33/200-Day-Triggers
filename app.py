@@ -271,10 +271,128 @@ def analyze_enhanced_sma_strategy(
         else:
           status, signal = "🟡 Warning", "LOW VOLUME"
           msg = (
-              "Price above buffer, but RVOL"
-              f" ({rvol:.2f}x) lacks volume confirmation."
+              f"Price above buffer, but RVOL ({rvol:.2f}x) lacks volume"
+              " confirmation."
           )
       elif is_below_lower and slope == "DOWN":
         if adx < 20:
           status, signal = "⚪ Consolidating", "WEAK BEAR"
-          msg = f"Price below 200 EMA, but weak ADX
+          msg = f"Price below 200 EMA, but weak ADX ({adx:.1f})."
+        elif rvol_confirmed:
+          status, signal = "🔴 Bearish", "SELL"
+          msg = f"Selling volume confirmed below buffer (RVOL: {rvol:.2f}x)."
+        else:
+          status, signal = "🔴 Bearish", "SELL LOW VOL"
+          msg = (
+              "Price below noise buffer with DOWN slope"
+              f" (RVOL: {rvol:.2f}x)."
+          )
+      elif is_in_buffer:
+        status, signal = "⚪ Neutral", "BUFFER ZONE"
+        msg = (
+            f"Price within +/-{effective_buffer*100:.1f}% noise buffer of 200"
+            " EMA."
+        )
+      else:
+        status, signal = "🟡 Warning", "CAUTION"
+        msg = (
+            f"Price crossed EMA but slope ({slope}) does not confirm direction."
+        )
+
+      pct_ema200 = ((curr_price - curr_ema200) / curr_ema200) * 100.0
+
+      results.append({
+          "Ticker": ticker,
+          "Status": status,
+          "Signal": signal,
+          "Price": round(curr_price, 2),
+          "200 EMA": round(curr_ema200, 2),
+          "% vs 200 EMA": f"{pct_ema200:+.2f}%",
+          "RVOL": round(rvol, 2),
+          "Volume Signal": volume_status,
+          "OBV Signal": obv_label,
+          "RSI": round(rsi, 1),
+          "Stoch %K": round(curr_stoch, 1),
+          "ADX": round(adx, 1),
+          "ATR (%)": round(atr_pct, 2),
+          "Bollinger Status": bb_commentary,
+          "Trigger Rationale": msg,
+      })
+    except Exception as e:
+      st.error(f"Error processing {ticker}: {str(e)}")
+
+  return pd.DataFrame(results)
+
+
+# --- UI Setup with Interactive URL & State Sync ---
+st.title("📈 " + REPO_NAME)
+st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+# Dynamic Methodology Guide: Status vs. Signal
+with st.expander("📖 **Methodology Guide: Status vs. Signal**"):
+  st.markdown("""
+    ### **Status (Market Condition)**
+    **Status** represents the macro market regime or technical state of an asset relative to its 200 EMA buffer zone and secondary indicators:
+    * 🟢 **Bullish:** Price is clear of the upper noise buffer with an upward or flat 200 EMA trajectory.
+    * 🔴 **Bearish:** Price is below the lower noise buffer with a downward 200 EMA trajectory.
+    * ⚪ **Neutral / Consolidating:** Price is inside the noise buffer or ADX < 20 (indicating low trend strength).
+    * 🟡 **Overbought / Squeeze / Pullback:** Macro trend remains favorable, but short-term extensions or contractions are present.
+
+    ---
+
+    ### **Signal (Actionable Trigger)**
+    **Signal** provides the specific execution output derived from volume confirmation (RVOL) and indicator alignments:
+    * **ACCUMULATE:** High conviction entry—price is above noise buffer with strong volume (`RVOL >= threshold`) and short MA alignment.
+    * **HOLD:** Maintain existing position—asset is bullish but short-term momentum (RSI/Stochastic) is stretched.
+    * **WAIT:** Favorable long-term trend, but price is pulling back below short moving averages (20 EMA / 50 SMA).
+    * **WATCH:** Active Bollinger Band squeeze or volatility setup requiring close observation.
+    * **SELL / WARNING:** Negative volume divergence or confirmed breakdown below the lower buffer zone.
+    """)
+
+st.sidebar.header("Screener Configuration")
+
+# 1. Parse URL parameters on initial load
+url_params = st.query_params
+initial_preset = url_params.get("preset", "Broad Market")
+if initial_preset not in PRESET_CONFIGS:
+  initial_preset = "Broad Market"
+
+
+# 2. Setup Session State Callback Functions
+def on_preset_change():
+  selected = st.session_state["preset_select"]
+  st.session_state["ticker_text"] = PRESET_CONFIGS[selected]["tickers"]
+  st.query_params["preset"] = selected
+  st.query_params["tickers"] = st.session_state["ticker_text"]
+
+
+def on_ticker_change():
+  st.query_params["preset"] = st.session_state["preset_select"]
+  st.query_params["tickers"] = st.session_state["ticker_text"]
+
+
+# 3. Initialize Session State values if not present
+if "preset_select" not in st.session_state:
+  st.session_state["preset_select"] = initial_preset
+
+if "ticker_text" not in st.session_state:
+  st.session_state["ticker_text"] = url_params.get(
+      "tickers", PRESET_CONFIGS[initial_preset]["tickers"]
+  )
+
+# --- Primary Run Button Placed At Top ---
+run_screener = st.sidebar.button(
+    "🚀 Run Screener", type="primary", use_container_width=True
+)
+
+st.sidebar.divider()
+
+# 4. Render Sidebar Controls with Callbacks
+selected_preset = st.sidebar.selectbox(
+    "Target Instance Preset:",
+    options=list(PRESET_CONFIGS.keys()),
+    key="preset_select",
+    on_change=on_preset_change,
+)
+
+active_defaults = PRESET
