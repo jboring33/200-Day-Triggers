@@ -1,6 +1,7 @@
 """
 Repository: 200 Day Triggers
 Description: Streamlit Web Application for Macro (200 EMA) and Short-Term Trend Screening.
+Features: Interactive Preset Selection, Custom Ticker Overrides, and Dynamic URL Sync for Bookmarks.
 """
 
 from datetime import datetime
@@ -327,23 +328,57 @@ def analyze_enhanced_sma_strategy(
   return pd.DataFrame(results)
 
 
-# --- UI Setup ---
+# --- UI Setup with Interactive URL & State Sync ---
 st.title("📈 " + REPO_NAME)
 st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 st.sidebar.header("Screener Configuration")
-run_screener = st.sidebar.button(
-    "🚀 Run Screener", type="primary", use_container_width=True
+
+# 1. Parse URL parameters on initial load
+url_params = st.query_params
+initial_preset = url_params.get("preset", "Broad Market")
+if initial_preset not in PRESET_CONFIGS:
+  initial_preset = "Broad Market"
+
+# 2. Setup Session State Callback Functions
+def on_preset_change():
+  selected = st.session_state["preset_select"]
+  st.session_state["ticker_text"] = PRESET_CONFIGS[selected]["tickers"]
+  st.query_params["preset"] = selected
+  st.query_params["tickers"] = st.session_state["ticker_text"]
+
+
+def on_ticker_change():
+  st.query_params["preset"] = st.session_state["preset_select"]
+  st.query_params["tickers"] = st.session_state["ticker_text"]
+
+
+# 3. Initialize Session State values if not present
+if "preset_select" not in st.session_state:
+  st.session_state["preset_select"] = initial_preset
+
+if "ticker_text" not in st.session_state:
+  st.session_state["ticker_text"] = url_params.get(
+      "tickers", PRESET_CONFIGS[initial_preset]["tickers"]
+  )
+
+# 4. Render Sidebar Controls with Callbacks
+selected_preset = st.sidebar.selectbox(
+    "Target Instance Preset:",
+    options=list(PRESET_CONFIGS.keys()),
+    key="preset_select",
+    on_change=on_preset_change,
 )
 
-selected_preset = st.sidebar.selectbox(
-    "Target Instance Preset:", list(PRESET_CONFIGS.keys())
-)
 active_defaults = PRESET_CONFIGS[selected_preset]
 
 ticker_input = st.sidebar.text_area(
-    "Watchlist Tickers:", value=active_defaults["tickers"]
+    "Watchlist Tickers (Editable):",
+    key="ticker_text",
+    on_change=on_ticker_change,
+    help="Edit these tickers freely. Any changes instantly update the browser URL for easy bookmarking.",
 )
+
 buffer_setting = st.sidebar.slider(
     "Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5
 )
@@ -356,6 +391,10 @@ rvol_setting = st.sidebar.slider(
 )
 min_atr_setting = st.sidebar.slider(
     "Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25
+)
+
+run_screener = st.sidebar.button(
+    "🚀 Run Screener", type="primary", use_container_width=True
 )
 
 if run_screener:
