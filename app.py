@@ -21,48 +21,79 @@ PRESET_CONFIGS = {
         "buffer": 2.0,
         "rvol": 0.80,
         "min_atr": 0.75,
+        "rationale": (
+            "Broad indices exhibit moderate volatility and high liquidity. A 2.0% buffer filters out benchmark noise, "
+            "an RVOL of 0.80 allows for steady index accumulation tracking, and a 0.75% ATR minimum screens out stagnant conditions."
+        ),
     },
     "Mag7": {
         "tickers": "NVDA, AAPL, MSFT, AMZN, GOOGL, META, TSLA",
         "buffer": 2.5,
         "rvol": 1.00,
         "min_atr": 1.00,
+        "rationale": (
+            "High-beta mega-cap tech stocks require wider noise filters to accommodate intraday price swings (2.5%). "
+            "An RVOL threshold of 1.00 ensures breakouts are backed by institutional volume, while a 1.00% ATR floor filters low-range consolidation."
+        ),
     },
     "Sector ETFs": {
         "tickers": "XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU, VGT",
         "buffer": 2.0,
         "rvol": 0.85,
         "min_atr": 0.50,
+        "rationale": (
+            "Sectors vary in beta (e.g., XLE vs XLU). A 2.0% buffer balances defensive and cyclical ranges, "
+            "an RVOL of 0.85 confirms sector rotation, and a 0.50% ATR floor accounts for lower-volatility defensive sector ETFs."
+        ),
     },
     "Bond ETFs": {
         "tickers": "SGOV, JPST, JAAA, JBBB, SCYB",
         "buffer": 1.0,
         "rvol": 0.10,
         "min_atr": 0.00,
+        "rationale": (
+            "Fixed-income and ultra-short ETFs move in tight tight price bands with lower volume variance. A tight 1.0% buffer prevents "
+            "false macro regime changes, an RVOL of 0.10 prevents false non-volume flags, and an ATR of 0.00% ensures low-volatility income assets aren't filtered out."
+        ),
     },
     "Covered Call ETFs": {
         "tickers": "JEPI, JEPQ, XYLD, QYLD",
         "buffer": 1.5,
         "rvol": 0.75,
         "min_atr": 0.25,
+        "rationale": (
+            "Option-overlay ETFs capped by call sales experience dampened upside volatility. A 1.5% buffer captures trend shifts without "
+            "over-filtering option-capped moves, paired with lower RVOL (0.75) and ATR (0.25%) requirements suited for yield strategies."
+        ),
     },
     "Dividend ETFs": {
         "tickers": "USMV, SPHD, SCHD, VYM",
         "buffer": 2.0,
         "rvol": 0.75,
         "min_atr": 0.50,
+        "rationale": (
+            "Value and high-dividend funds exhibit lower beta than growth assets. A 2.0% buffer absorbs standard equity fluctuation, "
+            "while 0.75 RVOL and 0.50% ATR capture steady dividend accumulation without demanding high-growth momentum spikes."
+        ),
     },
     "Speculative & Commodities": {
         "tickers": "FBTC, IBIT, IAUM, GLD, SLV",
         "buffer": 4.0,
         "rvol": 1.25,
         "min_atr": 2.00,
+        "rationale": (
+            "Crypto ETFs and precious metals experience intense volatility spikes and false breakouts. A wide 4.0% buffer prevents premature triggers, "
+            "a high RVOL threshold (1.25) demands heavy volume conviction, and a 2.00% ATR floor filters out dead-zone chop."
+        ),
     },
     "Custom": {
         "tickers": "SPY, QQQ, NVDA, EMXC, VGT",
         "buffer": 2.0,
         "rvol": 1.00,
         "min_atr": 0.00,
+        "rationale": (
+            "Neutral baseline settings tailored for user customization. Standard 2.0% buffer, average 1.00 RVOL threshold, and no minimum ATR restriction."
+        ),
     },
 }
 
@@ -241,162 +272,4 @@ def analyze_enhanced_sma_strategy(
                 ):
                     status, signal = "🟢 Bullish", "ACCUMULATE"
                     msg = f"Confirmed breakout above buffer (RVOL: {rvol:.2f}x)."
-                elif curr_price <= curr_ema20 or curr_price <= curr_sma50:
-                    status, signal = "🟡 Pullback", "WAIT"
-                    msg = "Macro trend is UP, but price is pulling back below short MAs."
-                else:
-                    status, signal = "🟡 Warning", "LOW VOLUME"
-                    msg = f"Price above buffer, but RVOL ({rvol:.2f}x) lacks volume confirmation."
-            elif is_below_lower and slope == "DOWN":
-                if adx < 20:
-                    status, signal = "⚪ Consolidating", "WEAK BEAR"
-                    msg = f"Price below 200 EMA, but weak ADX ({adx:.1f})."
-                elif rvol_confirmed:
-                    status, signal = "🔴 Bearish", "SELL"
-                    msg = f"Selling volume confirmed below buffer (RVOL: {rvol:.2f}x)."
-                else:
-                    status, signal = "🔴 Bearish", "SELL LOW VOL"
-                    msg = f"Price below noise buffer with DOWN slope (RVOL: {rvol:.2f}x)."
-            elif is_in_buffer:
-                status, signal = "⚪ Neutral", "BUFFER ZONE"
-                msg = f"Price within +/-{effective_buffer*100:.1f}% noise buffer of 200 EMA."
-            else:
-                status, signal = "🟡 Warning", "CAUTION"
-                msg = f"Price crossed EMA but slope ({slope}) does not confirm direction."
-
-            pct_ema200 = ((curr_price - curr_ema200) / curr_ema200) * 100.0
-
-            results.append({
-                "Ticker": ticker,
-                "Status": status,
-                "Signal": signal,
-                "Price": round(curr_price, 2),
-                "200 EMA": round(curr_ema200, 2),
-                "% vs 200 EMA": f"{pct_ema200:+.2f}%",
-                "RVOL": round(rvol, 2),
-                "Volume Signal": volume_status,
-                "OBV Signal": obv_label,
-                "RSI": round(rsi, 1),
-                "Stoch %K": round(curr_stoch, 1),
-                "ADX": round(adx, 1),
-                "ATR (%)": round(atr_pct, 2),
-                "Bollinger Status": bb_commentary,
-                "Trigger Rationale": msg,
-            })
-        except Exception as e:
-            st.error(f"Error processing {ticker}: {str(e)}")
-
-    return pd.DataFrame(results)
-
-
-# --- UI Setup with Interactive URL & State Sync ---
-st.title("📈 " + REPO_NAME)
-st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-
-with st.expander("📖 **Methodology Guide: Status vs. Signal**"):
-    st.markdown("""
-    ### **Status (Market Condition)**
-    **Status** represents the macro market regime or technical state of an asset relative to its 200 EMA buffer zone and secondary indicators:
-    * 🟢 **Bullish:** Price is clear of the upper noise buffer with an upward or flat 200 EMA trajectory.
-    * 🔴 **Bearish:** Price is below the lower noise buffer with a downward 200 EMA trajectory.
-    * ⚪ **Neutral / Consolidating:** Price is inside the noise buffer or ADX < 20 (indicating low trend strength).
-    * 🟡 **Overbought / Squeeze / Pullback:** Macro trend remains favorable, but short-term extensions or contractions are present.
-
-    ---
-
-    ### **Signal (Actionable Trigger)**
-    **Signal** provides the specific execution output derived from volume confirmation (RVOL) and indicator alignments:
-    * **ACCUMULATE:** High conviction entry—price is above noise buffer with strong volume (`RVOL >= threshold`) and short MA alignment.
-    * **HOLD:** Maintain existing position—asset is bullish but short-term momentum (RSI/Stochastic) is stretched.
-    * **WAIT:** Favorable long-term trend, but price is pulling back below short moving averages (20 EMA / 50 SMA).
-    * **WATCH:** Active Bollinger Band squeeze or volatility setup requiring close observation.
-    * **SELL / WARNING:** Negative volume divergence or confirmed breakdown below the lower buffer zone.
-    """)
-
-st.sidebar.header("Screener Configuration")
-
-url_params = st.query_params
-initial_preset = url_params.get("preset", "Broad Market")
-if initial_preset not in PRESET_CONFIGS:
-    initial_preset = "Broad Market"
-
-
-def on_preset_change():
-    selected = st.session_state["preset_select"]
-    st.session_state["ticker_text"] = PRESET_CONFIGS[selected]["tickers"]
-    st.query_params["preset"] = selected
-    st.query_params["tickers"] = st.session_state["ticker_text"]
-
-
-def on_ticker_change():
-    st.query_params["preset"] = st.session_state["preset_select"]
-    st.query_params["tickers"] = st.session_state["ticker_text"]
-
-
-if "preset_select" not in st.session_state:
-    st.session_state["preset_select"] = initial_preset
-
-if "ticker_text" not in st.session_state:
-    st.session_state["ticker_text"] = url_params.get(
-        "tickers", PRESET_CONFIGS[initial_preset]["tickers"]
-    )
-
-run_screener = st.sidebar.button(
-    "🚀 Run Screener", type="primary", use_container_width=True
-)
-
-st.sidebar.divider()
-
-selected_preset = st.sidebar.selectbox(
-    "Target Instance Preset:",
-    options=list(PRESET_CONFIGS.keys()),
-    key="preset_select",
-    on_change=on_preset_change,
-)
-
-active_defaults = PRESET_CONFIGS[selected_preset]
-
-ticker_input = st.sidebar.text_area(
-    "Watchlist Tickers (Editable):",
-    key="ticker_text",
-    on_change=on_ticker_change,
-    help="Edit these tickers freely. Any changes instantly update the browser URL for easy bookmarking.",
-)
-
-buffer_setting = st.sidebar.slider(
-    "Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5
-)
-rvol_setting = st.sidebar.slider(
-    "Min RVOL Breakout Confirmation (x)",
-    0.1,
-    2.5,
-    active_defaults["rvol"],
-    0.05,
-)
-min_atr_setting = st.sidebar.slider(
-    "Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25
-)
-
-if run_screener:
-    tickers_list = [
-        t.strip().upper() for t in ticker_input.split(",") if t.strip()
-    ]
-    if tickers_list:
-        with st.spinner("Analyzing market data..."):
-            df_results = analyze_enhanced_sma_strategy(
-                tickers_list,
-                default_buffer_pct=buffer_setting / 100.0,
-                rvol_threshold=rvol_setting,
-            )
-        if not df_results.empty:
-            st.subheader("📊 Unified Trigger & Analysis Matrix")
-            st.dataframe(df_results, use_container_width=True, hide_index=True)
-
-            st.divider()
-            csv_data = df_results.to_csv(index=False)
-            st.download_button(
-                "📥 Download Full Table CSV",
-                csv_data,
-                "200_day_triggers.csv",
-                "text/csv",
-            )
+                elif curr_price <= curr_ema20 or curr_price
