@@ -1,6 +1,6 @@
 """
 Repository: 200 Day Triggers
-Description: Streamlit Web Application for Macro (200 EMA) and Short-Term Trend & Volatility Screening.
+Description: Streamlit Web Application for Macro (200 EMA) and Short-Term Trend Screening.
 """
 
 import streamlit as st
@@ -113,40 +113,83 @@ def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, defaul
             ema_diff = ((curr_ema200 - prev_ema200) / prev_ema200) * 100
             slope = "UP" if ema_diff > 0.05 else ("DOWN" if ema_diff < -0.05 else "FLAT")
             
-            # Single-line decision blocks to prevent syntax breaks
+            # Direct status, signal, and concise reason mapping
             if curr_price > upper_th and slope in ["UP", "FLAT"]:
                 if adx < 20:
-                    status_short, full_signal, reason = "⚪ Consolidating", "CONSOLIDATION / NO TREND", f"Price >200 EMA, but weak ADX ({adx:.1f}) indicates sideways movement."
+                    status, signal, msg = "⚪ Consolidating", "NO TREND", f"ADX ({adx:.1f}) < 20 (Range-bound)"
                 elif rsi > 70:
-                    status_short, full_signal, reason = "🟡 Overbought", "HOLD / DO NOT ADD", f"Overbought condition with RSI ({rsi:.1f}) > 70 and BB Width at {bb_width:.1f}%."
+                    status, signal, msg = "🟡 Overbought", "HOLD", f"RSI ({rsi:.1f}) > 70 (Extended)"
                 elif obv_slope < 0 and rsi < 50:
-                    status_short, full_signal, reason = "🔴 Divergence", "WARNING / NEAR-TERM DISTRIBUTION", f"Negative OBV volume flow and weak RSI ({rsi:.1f}) signal distribution."
+                    status, signal, msg = "🔴 Divergence", "WARNING", "Negative OBV volume outflow"
                 elif is_squeeze:
-                    status_short, full_signal, reason = "🟡 Squeeze", "WATCH / VOLATILITY SQUEEZE", f"Bollinger Band squeeze active (BB Width: {bb_width:.1f}%)."
+                    status, signal, msg = "🟡 Squeeze", "WATCH", f"BB Squeeze active ({bb_width:.1f}%)"
                 elif curr_price > curr_ema20 and curr_price > curr_sma50 and rvol_confirmed:
-                    status_short, full_signal, reason = "🟢 Bullish", "ACCUMULATE / BREAKOUT", f"Clear breakout above buffer. ADX={adx:.1f}, RSI={rsi:.1f}, RVOL={rvol:.2f}x."
+                    status, signal, msg = "🟢 Bullish", "ACCUMULATE", f"Breakout confirmed (RVOL: {rvol:.2f}x)"
                 elif curr_price <= curr_ema20 or curr_price <= curr_sma50:
-                    status_short, full_signal, reason = "🟡 Pullback", "MACRO BULL / WAIT FOR ENTRY", "Macro trend is UP (>200 EMA), but price is pulling back below short MAs."
+                    status, signal, msg = "🟡 Pullback", "WAIT", "Pullback below short MAs"
                 else:
-                    status_short, full_signal, reason = "🟡 Warning", "BULLISH / LOW VOLUME", f"Price > 200 EMA buffer, but RVOL ({rvol:.2f}x) is below target."
+                    status, signal, msg = "🟡 Warning", "LOW VOLUME", f"RVOL ({rvol:.2f}x) below threshold"
             elif curr_price < lower_th and slope == "DOWN":
                 if adx < 20:
-                    status_short, full_signal, reason = "⚪ Consolidating", "SIDEWAYS / WEAK BEAR TREND", f"Price < 200 EMA, but weak trend strength with ADX ({adx:.1f})."
+                    status, signal, msg = "⚪ Consolidating", "WEAK BEAR", f"ADX ({adx:.1f}) < 20"
                 elif rvol_confirmed:
-                    status_short, full_signal, reason = "🔴 Bearish", "SELL / CASH OUT", f"Price < buffer with slope DOWN, confirmed by selling volume (RVOL: {rvol:.2f}x)."
+                    status, signal, msg = "🔴 Bearish", "SELL", f"Selling volume confirmed ({rvol:.2f}x)"
                 else:
-                    status_short, full_signal, reason = "🔴 Bearish", "SELL / LOW VOL DOWN", f"Price < buffer & slope DOWN (RVOL: {rvol:.2f}x)."
+                    status, signal, msg = "🔴 Bearish", "SELL LOW VOL", f"Price < buffer ({rvol:.2f}x)"
             elif lower_th <= curr_price <= upper_th:
-                status_short, full_signal, reason = "⚪ Neutral", "NOISE BUFFER ZONE", f"Price within +/-{effective_buffer*100:.1f}% noise buffer of 200 EMA."
+                status, signal, msg = "⚪ Neutral", "BUFFER ZONE", f"Within +/-{effective_buffer*100:.1f}% 200 EMA"
             else:
-                status_short, full_signal, reason = "🟡 Warning", "WATCH / CAUTION", f"Price crossed EMA but slope ({slope}) or buffer does not confirm direction."
+                status, signal, msg = "🟡 Warning", "CAUTION", f"Unconfirmed EMA cross ({slope})"
 
             pct_ema200 = ((curr_price - curr_ema200) / curr_ema200) * 100
             obv_label = "INFLOW" if obv_slope > 0 else "OUTFLOW"
             
-            flyover = f"[{full_signal}] {reason} | Timeframe: {timeframe_label} | Price: ${curr_price:.2f} \vert{} ADX: {adx:.1f} \vert{} RSI: {rsi:.1f} \vert{} OBV: {obv_label} \vert{} BB Width: {bb_width:.1f}\% \vert{} RVOL: {rvol:.2f}x \vert{} ATR\%: {atr_pct:.2f}\% \vert{} 200 EMA:${curr_ema200:.2f} ({pct_ema200:+.2f}%)"
+            trigger_text = f"[{signal}] {msg} | P: ${curr_price:.2f} | ADX: {adx:.1f} | RSI: {rsi:.1f} | OBV: {obv_label} | BBW: {bb_width:.1f}% | RVOL: {rvol:.2f}x | ATR%: {atr_pct:.2f}% | 200EMA: ${curr_ema200:.2f} ({pct_ema200:+.2f}%)"
 
             results.append({
-                "Status & Signal": status_short,
+                "Status & Signal": status,
                 "Ticker": ticker,
-                "Trigger Details
+                "Trigger Details": trigger_text,
+                "Full Signal": signal,
+                "Price": round(curr_price, 2),
+                "ADX": round(adx, 1),
+                "RSI": round(rsi, 1),
+                "RVOL": round(rvol, 2),
+                "ATR (%)": round(atr_pct, 2),
+                "200 EMA": round(curr_ema200, 2),
+                "Reason": msg
+            })
+        except Exception as e:
+            st.error(f"Error processing {ticker}: {str(e)}")
+            
+    return pd.DataFrame(results)
+
+# --- UI Setup ---
+st.title("📈 " + REPO_NAME)
+st.caption("Last updated: " + datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+
+st.sidebar.header("Screener Configuration")
+run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_container_width=True)
+
+selected_preset = st.sidebar.selectbox("Target Instance Preset:", list(PRESET_CONFIGS.keys()))
+active_defaults = PRESET_CONFIGS[selected_preset]
+
+ticker_input = st.sidebar.text_area("Watchlist Tickers:", value=active_defaults["tickers"])
+buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
+rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
+min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
+
+if run_screener:
+    tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
+    if tickers_list:
+        with st.spinner("Analyzing market data..."):
+            df_results = analyze_enhanced_sma_strategy(
+                tickers_list, 
+                default_buffer_pct=buffer_setting / 100.0, 
+                rvol_threshold=rvol_setting
+            )
+        if not df_results.empty:
+            cols = ["Status & Signal", "Ticker", "Trigger Details"]
+            st.dataframe(df_results[cols], use_container_width=True, hide_index=True)
+            csv = df_results.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Download CSV", csv, "200_day_triggers.csv", "text/csv")
