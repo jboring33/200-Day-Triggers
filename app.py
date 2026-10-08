@@ -179,5 +179,33 @@ def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, defaul
             min_bb_width = float(hist_bb_width.rolling(window=50).min().iloc[-1]) * 100
             is_squeeze = bb_width <= (min_bb_width * 1.15)
             
+            # Volume Label Logic
+            if rvol_confirmed and curr_price >= curr_ema20:
+                vol_label = "STRONG BUYING VOLUME"
+            elif rvol_confirmed and curr_price < curr_ema20:
+                vol_label = "STRONG SELLING VOLUME"
+            else:
+                vol_label = "LOW VOLUME"
+
             # Slope Calculation
-            ema_diff_pct = ((curr_ema200 - prev_ema200) / prev_ema200
+            ema_diff_pct = ((curr_ema200 - prev_ema200) / prev_ema200) * 100
+            if ema_diff_pct > 0.05:
+                slope = "UP"
+            elif ema_diff_pct < -0.05:
+                slope = "DOWN"
+            else:
+                slope = "FLAT"
+
+            ma_cross = "GOLDEN CROSS (Bullish)" if curr_sma50 > curr_sma200 else "DEATH CROSS (Bearish)"
+                
+            above_20_ema = curr_price > curr_ema20
+            above_50_sma = curr_price > curr_sma50
+
+            vol_str = f"RVOL: {rvol:.2f}x ({vol_label})"
+            pct_from_ema200 = ((curr_price - curr_ema200) / curr_ema200) * 100
+
+            # --- MULTI-INDICATOR SIGNAL DECISION MATRIX ---
+            if curr_price > upper_threshold and slope in ["UP", "FLAT"]:
+                if adx < 20:
+                    status_short = "⚪ Consolidating"
+                    full_signal = "CONSOLIDATION / NO TREND"
