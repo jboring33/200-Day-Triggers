@@ -174,5 +174,77 @@ def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, defaul
             lower_bb = float((sma20 - (std20 * 2)).iloc[-1])
             bb_width = ((upper_bb - lower_bb) / float(sma20.iloc[-1])) * 100
             
-            # 20-period historical minimum band width to detect Squeeze
-            hist_bb_width = ((sma20 + (std20 * 2)) - (sma20 -
+            # 20-period historical minimum band width to detect Squeeze (Line 178 Restored)
+            hist_bb_width = ((sma20 + (std20 * 2)) - (sma20 - (std20 * 2))) / sma20
+            min_bb_width = float(hist_bb_width.rolling(window=50).min().iloc[-1]) * 100
+            is_squeeze = bb_width <= (min_bb_width * 1.15)
+            
+            # Volume Label Logic
+            if rvol_confirmed and curr_price >= curr_ema20:
+                vol_label = "STRONG BUYING VOLUME"
+            elif rvol_confirmed and curr_price < curr_ema20:
+                vol_label = "STRONG SELLING VOLUME"
+            else:
+                vol_label = "LOW VOLUME"
+
+            # Slope Calculation
+            ema_diff_pct = ((curr_ema200 - prev_ema200) / prev_ema200) * 100
+            if ema_diff_pct > 0.05:
+                slope = "UP"
+            elif ema_diff_pct < -0.05:
+                slope = "DOWN"
+            else:
+                slope = "FLAT"
+
+            ma_cross = "GOLDEN CROSS (Bullish)" if curr_sma50 > curr_sma200 else "DEATH CROSS (Bearish)"
+                
+            above_20_ema = curr_price > curr_ema20
+            above_50_sma = curr_price > curr_sma50
+
+            vol_str = f"RVOL: {rvol:.2f}x ({vol_label})"
+            pct_from_ema200 = ((curr_price - curr_ema200) / curr_ema200) * 100
+
+            # --- MULTI-INDICATOR SIGNAL DECISION MATRIX ---
+            if curr_price > upper_threshold and slope in ["UP", "FLAT"]:
+                if adx < 20:
+                    status_short = "⚪ Consolidating"
+                    full_signal = "CONSOLIDATION / NO TREND"
+                    reason = f"Macro trend >200 EMA, but ADX ({adx:.1f}) < 20 confirms range-bound sideways movement."
+                elif rsi > 70:
+                    status_short = "🟡 Overbought"
+                    full_signal = "HOLD / DO NOT ADD (EXTENDED)"
+                    reason = f"Strong trend, but RSI ({rsi:.1f}) > 70 & BB Width ({bb_width:.1f}%) signal overbought extension. Expect mean-reversion."
+                elif obv_slope < 0 and rsi < 50:
+                    status_short = "🔴 Divergence"
+                    full_signal = "WARNING / NEAR-TERM DISTRIBUTION"
+                    reason = f"Price > 200 EMA, but negative OBV volume flow and weak RSI ({rsi:.1f}) indicate near-term distribution."
+                elif is_squeeze:
+                    status_short = "🟡 Squeeze"
+                    full_signal = "WATCH / VOLATILITY SQUEEZE"
+                    reason = f"Bollinger Band squeeze detected (BB Width: {bb_width:.1f}%). Prepare for explosive directional move."
+                elif above_20_ema and above_50_sma and rvol_confirmed:
+                    status_short = "🟢 Bullish"
+                    full_signal = "ACCUMULATE / STRONG BREAKOUT"
+                    reason = f"Price > buffer, short MAs aligned, ADX ({adx:.1f}) trending, healthy RSI ({rsi:.1f}), and RVOL ({rvol:.2f}x) confirmed."
+                elif not above_20_ema or not above_50_sma:
+                    status_short = "🟡 Pullback"
+                    full_signal = "MACRO BULL / WAIT FOR ENTRY"
+                    reason = "Macro trend is UP (>200 EMA), but price is pulling back below short-term MAs."
+                else:
+                    status_short = "🟡 Warning"
+                    full_signal = "BULLISH / LOW VOLUME"
+                    reason = f"Price > 200 EMA buffer, but RVOL ({rvol:.2f}x) is below threshold ({rvol_threshold:.2f}x)."
+                    
+            elif curr_price < lower_threshold and slope == "DOWN":
+                if adx < 20:
+                    status_short = "⚪ Consolidating"
+                    full_signal = "SIDEWAYS / WEAK BEAR TREND"
+                    reason = f"Price < 200 EMA, but ADX ({adx:.1f}) < 20 indicates weak trend strength."
+                elif rvol_confirmed:
+                    status_short = "🔴 Bearish"
+                    full_signal = "SELL / CASH OUT"
+                    reason = f"Price < buffer with slope DOWN, confirmed by selling volume (RVOL: {rvol:.2f}x)."
+                else:
+                    status_short = "🔴 Bearish"
+                    full_signal = "SELL / LOW VOL DOWN"
+                    reason =
