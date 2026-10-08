@@ -204,4 +204,27 @@ def analyze_enhanced_sma_strategy(
       avg_50_bb_width = float(bb_width_series.rolling(50).mean().iloc[-1]) * 100
       min_50_bb_width = float(bb_width_series.rolling(50).min().iloc[-1]) * 100
 
-      is_squeeze = curr_bb
+      is_squeeze = curr_bb_width <= (min_50_bb_width * 1.15)
+      is_expanding = curr_bb_width > (avg_50_bb_width * 1.20)
+
+      if is_squeeze:
+        bb_commentary = (
+            f"SQUEEZE ({curr_bb_width:.1f}%) - Tight compression before"
+            " expansion"
+        )
+      elif is_expanding:
+        bb_commentary = (
+            f"EXPANDING HIGH VOLATILITY ({curr_bb_width:.1f}% vs"
+            f" avg {avg_50_bb_width:.1f}%) - Wider than normal bands"
+        )
+      elif curr_price >= upper_bb:
+        bb_commentary = (
+            f"UPPER BAND STRETCH (${upper_bb:.2f}) - Highly Extended"
+        )
+      elif curr_price <= lower_bb:
+        bb_commentary = (
+            f"LOWER BAND STRETCH (${lower_bb:.2f}) - Oversold Conditions"
+        )
+      else:
+        bb_commentary = (
+            f"NORMAL RANGE ({curr_bb_width:.1f}% width)
