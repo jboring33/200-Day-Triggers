@@ -156,10 +156,9 @@ def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, defaul
                 msg = f"Price crossed EMA but slope ({slope}) does not confirm direction."
 
             pct_ema200 = ((curr_price - curr_ema200) / curr_ema200) * 100.0
-            
-            # Line restored and simplified to prevent cutoff
             obv_label = "INFLOW" if obv_slope > 0 else "OUTFLOW"
             
+            # Line 163 - Restored clean Python f-string
             trigger_text = f"[{signal}] {msg} | P: ${curr_price:.2f} \vert{} ADX: {adx:.1f} \vert{} RSI: {rsi:.1f} \vert{} OBV: {obv_label} \vert{} BBW: {bb_width:.1f}\% \vert{} RVOL: {rvol:.2f}x \vert{} ATR\%: {atr_pct:.2f}\% \vert{} 200EMA:${curr_ema200:.2f} ({pct_ema200:+.2f}%)"
 
             results.append({
