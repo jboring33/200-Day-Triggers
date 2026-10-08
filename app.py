@@ -92,8 +92,8 @@ def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, defaul
             atr_pct = (atr / curr_price) * 100
             effective_buffer = max(default_buffer_pct, (atr / curr_price) * 1.5)
             
-            upper_th = curr_ema200 * (1 + effective_buffer)
-            lower_th = curr_ema200 * (1 - effective_buffer)
+            upper_th = curr_ema200 * (1.0 + effective_buffer)
+            lower_th = curr_ema200 * (1.0 - effective_buffer)
             
             rsi = float(calculate_rsi(close).iloc[-1])
             adx = float(calculate_adx(df_clean).iloc[-1])
@@ -112,7 +112,11 @@ def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, defaul
             ema_diff = ((curr_ema200 - prev_ema200) / prev_ema200) * 100
             slope = "UP" if ema_diff > 0.05 else ("DOWN" if ema_diff < -0.05 else "FLAT")
             
-            if curr_price > upper_th and slope in ["UP", "FLAT"]:
+            is_above_upper = curr_price > upper_th
+            is_below_lower = curr_price < lower_th
+            is_in_buffer = lower_th <= curr_price <= upper_th
+            
+            if is_above_upper and slope in ["UP", "FLAT"]:
                 if adx < 20:
                     status = "⚪ Consolidating"
                     signal = "NO TREND"
@@ -136,12 +140,12 @@ def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, defaul
                 elif curr_price <= curr_ema20 or curr_price <= curr_sma50:
                     status = "🟡 Pullback"
                     signal = "WAIT"
-                    msg = "Macro trend is UP, but price is pulling back below key short MAs."
+                    msg = "Macro trend is UP, but price is pulling back below short MAs."
                 else:
                     status = "🟡 Warning"
                     signal = "LOW VOLUME"
                     msg = f"Price above buffer, but RVOL ({rvol:.2f}x) lacks volume confirmation."
-            elif curr_price < lower_th and slope == "DOWN":
+            elif is_below_lower and slope == "DOWN":
                 if adx < 20:
                     status = "⚪ Consolidating"
                     signal = "WEAK BEAR"
@@ -154,7 +158,7 @@ def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, defaul
                     status = "🔴 Bearish"
                     signal = "SELL LOW VOL"
                     msg = f"Price below noise buffer with DOWN slope (RVOL: {rvol:.2f}x)."
-            elif lower_th <= curr_price <= upper_th:
+            elif is_in_buffer:
                 status = "⚪ Neutral"
                 signal = "BUFFER ZONE"
                 msg = f"Price within +/-{effective_buffer*100:.1f}% noise buffer of 200 EMA."
@@ -163,71 +167,4 @@ def analyze_enhanced_sma_strategy(tickers, interval="1d", slope_window=5, defaul
                 signal = "CAUTION"
                 msg = f"Price crossed EMA but slope ({slope}) does not confirm direction."
 
-            pct_ema200 = ((curr_price - curr_ema200) / curr_ema200) * 100
-            obv_label = "INFLOW" if obv_slope > 0 else "OUTFLOW"
-            
-            trigger_text = f"[{signal}] {msg} | P: ${curr_price:.2f} \vert{} ADX: {adx:.1f} \vert{} RSI: {rsi:.1f} \vert{} OBV: {obv_label} \vert{} BBW: {bb_width:.1f}\% \vert{} RVOL: {rvol:.2f}x \vert{} ATR\%: {atr_pct:.2f}\% \vert{} 200EMA:${curr_ema200:.2f} ({pct_ema200:+.2f}%)"
-
-            results.append({
-                "Status & Signal": status,
-                "Ticker": ticker,
-                "Trigger Details": trigger_text,
-                "Full Signal": signal,
-                "Price": round(curr_price, 2),
-                "ADX": round(adx, 1),
-                "RSI": round(rsi, 1),
-                "RVOL": round(rvol, 2),
-                "ATR (%)": round(atr_pct, 2),
-                "200 EMA": round(curr_ema200, 2),
-                "Reason": msg
-            })
-        except Exception as e:
-            st.error(f"Error processing {ticker}: {str(e)}")
-            
-    return pd.DataFrame(results)
-
-# --- UI Setup ---
-st.title("📈 " + REPO_NAME)
-st.caption("Last updated: " + datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-
-st.sidebar.header("Screener Configuration")
-run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_container_width=True)
-
-selected_preset = st.sidebar.selectbox("Target Instance Preset:", list(PRESET_CONFIGS.keys()))
-active_defaults = PRESET_CONFIGS[selected_preset]
-
-ticker_input = st.sidebar.text_area("Watchlist Tickers:", value=active_defaults["tickers"])
-buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
-rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
-min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
-
-if run_screener:
-    tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
-    if tickers_list:
-        with st.spinner("Analyzing market data..."):
-            df_results = analyze_enhanced_sma_strategy(
-                tickers_list, 
-                default_buffer_pct=buffer_setting / 100.0, 
-                rvol_threshold=rvol_setting
-            )
-        if not df_results.empty:
-            cols = ["Status & Signal", "Ticker", "Trigger Details"]
-            st.dataframe(df_results[cols], use_container_width=True, hide_index=True)
-            
-            # Commentary Section
-            st.divider()
-            st.subheader("💡 Trigger Commentary & Analysis")
-            
-            for _, row in df_results.iterrows():
-                with st.expander(f"**{row['Ticker']}** - {row['Status & Signal']} ({row['Full Signal']})"):
-                    col1, col2, col3 = st.columns(3)
-                    col1.metric("Price", f"${row['Price']}")
-                    col2.metric("200 EMA", f"${row['200 EMA']}")
-                    col3.metric("RVOL", f"{row['RVOL']}x")
-                    
-                    st.markdown(f"**Trigger Rationale:** {row['Reason']}")
-                    st.markdown(f"**Key Metrics:** ADX: `{row['ADX']}` | RSI: `{row['RSI']}` | ATR: `{row['ATR (%)']}%`")
-
-            st.divider()
-            csv_data = df_results.to_csv(index=False)
-            st.download_button("📥 Download Full CSV", csv_data, "200_day_triggers.csv", "text/csv")
+            pct_ema200 = ((curr_price - curr_ema2
