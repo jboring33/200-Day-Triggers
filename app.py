@@ -225,4 +225,6 @@ def analyze_enhanced_sma_strategy(
             bb_width_series = ((sma20 + (std20 * 2)) - (sma20 - (std20 * 2))) / sma20
             curr_bb_width = float(bb_width_series.iloc[-1]) * 100
             avg_50_bb_width = float(bb_width_series.rolling(50).mean().iloc[-1]) * 100
-            min_50_bb_width = float(bb_width_series.rolling(50).min().iloc
+            min_50_bb_width = float(bb_width_series.rolling(50).min().iloc[-1]) * 100
+
+            is_squeeze = curr_bb_width <= (min_50_bb_width * 1.
