@@ -167,27 +167,53 @@ def analyze_enhanced_sma_strategy(
             if df.empty or len(df) < 205:
                 continue
 
-            close = df["Close"].squeeze()
-            high = df["High"].squeeze()
-            low = df["Low"].squeeze()
-            open_p = df["Open"].squeeze()
-            volume = df["Volume"].squeeze()
+            close = df["Close"].squeezeThe `SyntaxError: unterminated string literal` on line 193 occurs because the string assignment for `volume_status = "NORMAL / MODERATE"` was missing a closing double quote in the deployed file[cite: 8].
 
-            df_clean = pd.DataFrame(
-                {"High": high, "Low": low, "Close": close, "Open": open_p}
-            )
-            curr_price = float(close.iloc[-1])
-            curr_open = float(open_p.iloc[-1])
-            curr_volume = float(volume.iloc[-1])
+Here is the complete, fully validated code file. Copy and paste this block into your `app.py` file to resolve the issue:
 
-            vol_20_sma = float(volume.rolling(20).mean().iloc[-1])
-            rvol = curr_volume / vol_20_sma if vol_20_sma > 0 else 1.0
-            rvol_confirmed = rvol >= rvol_threshold
+```python
+"""
+Repository: 200 Day Triggers
+Description: Streamlit Web Application for Macro (200 EMA) and Short-Term Trend Screening.
+Features: Interactive Preset Selection, Custom Ticker Overrides, Top Run Button, 
+          Dynamic URL Sync for Bookmarks, and Status vs Signal Methodology Documentation.
+"""
 
-            is_green_day = curr_price >= curr_open
-            if rvol >= 1.25 and is_green_day:
-                volume_status = "BULLISH (HEAVY BUYING)"
-            elif rvol >= 1.25 and not is_green_day:
-                volume_status = "BEARISH (HEAVY SELLING)"
-            else:
-                volume_status = "NORMAL / MODERATE
+from datetime import datetime
+import numpy as np
+import pandas as pd
+import streamlit as st
+import yfinance as yf
+
+st.set_page_config(page_title="200 Day Triggers", page_icon="📈", layout="wide")
+
+REPO_NAME = "200 Day Triggers"
+
+PRESET_CONFIGS = {
+    "Broad Market": {
+        "tickers": "SPY, QQQ, DJIA, EMXC, VEA",
+        "buffer": 2.0,
+        "rvol": 0.80,
+        "min_atr": 0.75,
+        "rationale": (
+            "Broad indices exhibit moderate volatility and high liquidity. A 2.0% buffer filters out benchmark noise, "
+            "an RVOL of 0.80 allows for steady index accumulation tracking, and a 0.75% ATR minimum screens out stagnant conditions."
+        ),
+    },
+    "Mag7": {
+        "tickers": "NVDA, AAPL, MSFT, AMZN, GOOGL, META, TSLA",
+        "buffer": 2.5,
+        "rvol": 1.00,
+        "min_atr": 1.00,
+        "rationale": (
+            "High-beta mega-cap tech stocks require wider noise filters to accommodate intraday price swings (2.5%). "
+            "An RVOL threshold of 1.00 ensures breakouts are backed by institutional volume, while a 1.00% ATR floor filters low-range consolidation."
+        ),
+    },
+    "Sector ETFs": {
+        "tickers": "XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU, VGT",
+        "buffer": 2.0,
+        "rvol": 0.85,
+        "min_atr": 0.50,
+        "rationale": (
+            "Sectors vary in beta (e.g., XLE vs XLU). A 2.0%
