@@ -1,10 +1,3 @@
-The `SyntaxError: expected 'except' or 'finally' block` indicates that the `try:` block inside `analyze_enhanced_sma_strategy` was cut off mid-line at `upper_th = p` before reaching its `except` block.
-
-To completely solve truncation issues, this version splits the codebase into clean, concise modules and strips out redundant docstrings so the script stays well under streaming length limits.
-
-Here is the complete, fully working `app.py`:
-
-```python
 from datetime import datetime
 import numpy as np
 import pandas as pd
