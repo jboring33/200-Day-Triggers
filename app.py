@@ -23,8 +23,8 @@ PRESET_CONFIGS = {
         "min_atr": 0.75,
         "rationale": (
             "Broad indices exhibit moderate volatility and high liquidity. A 2.0% buffer "
-            "filters out benchmark noise, an RVOL of 0.80 allows for steady index accumulation "
-            "tracking, and a 0.75% ATR minimum screens out stagnant conditions."
+            "filters benchmark noise, RVOL of 0.80 allows steady index tracking, "
+            "and 0.75% ATR screens out stagnant conditions."
         ),
     },
     "Mag7": {
@@ -33,9 +33,9 @@ PRESET_CONFIGS = {
         "rvol": 1.00,
         "min_atr": 1.00,
         "rationale": (
-            "High-beta mega-cap tech stocks require wider noise filters to accommodate intraday "
-            "price swings (2.5%). An RVOL threshold of 1.00 ensures breakouts are backed by "
-            "institutional volume, while a 1.00% ATR floor filters low-range consolidation."
+            "High-beta mega-caps require wider noise filters for intraday swings (2.5%). "
+            "An RVOL of 1.00 ensures volume-backed breakouts, while a 1.00% ATR "
+            "floor filters low-range consolidation."
         ),
     },
     "Sector ETFs": {
@@ -44,9 +44,9 @@ PRESET_CONFIGS = {
         "rvol": 0.85,
         "min_atr": 0.50,
         "rationale": (
-            "Sectors vary in beta (e.g., XLE vs XLU). A 2.0% buffer balances defensive and cyclical "
-            "ranges, an RVOL of 0.85 confirms sector rotation, and a 0.50% ATR floor accounts "
-            "for lower-volatility defensive sector ETFs."
+            "Sectors vary in beta (e.g., XLE vs XLU). A 2.0% buffer balances ranges, "
+            "an RVOL of 0.85 confirms sector rotation, and a 0.50% ATR floor "
+            "accounts for defensive ETFs."
         ),
     },
     "Bond ETFs": {
@@ -55,9 +55,9 @@ PRESET_CONFIGS = {
         "rvol": 0.10,
         "min_atr": 0.00,
         "rationale": (
-            "Fixed-income and ultra-short ETFs move in tight price bands with lower volume variance. "
-            "A tight 1.0% buffer prevents false macro regime changes, an RVOL of 0.10 prevents false "
-            "non-volume flags, and an ATR of 0.00% ensures low-volatility income assets aren't filtered out."
+            "Fixed-income ETFs move in tight price bands. A tight 1.0% buffer prevents "
+            "false regime changes, an RVOL of 0.10 prevents false flags, and ATR "
+            "of 0.00% retains low-volatility income assets."
         ),
     },
     "Covered Call ETFs": {
@@ -66,9 +66,9 @@ PRESET_CONFIGS = {
         "rvol": 0.75,
         "min_atr": 0.25,
         "rationale": (
-            "Option-overlay ETFs capped by call sales experience dampened upside volatility. "
-            "A 1.5% buffer captures trend shifts without over-filtering option-capped moves, paired "
-            "with lower RVOL (0.75) and ATR (0.25%) requirements suited for yield strategies."
+            "Option-overlay ETFs experience dampened upside volatility. A 1.5% buffer "
+            "captures trend shifts without over-filtering capped moves, paired "
+            "with lower RVOL (0.75) and ATR (0.25%)."
         ),
     },
     "Dividend ETFs": {
@@ -77,9 +77,9 @@ PRESET_CONFIGS = {
         "rvol": 0.75,
         "min_atr": 0.50,
         "rationale": (
-            "Value and high-dividend funds exhibit lower beta than growth assets. A 2.0% buffer absorbs "
-            "standard equity fluctuation, while 0.75 RVOL and 0.50% ATR capture steady dividend "
-            "accumulation without demanding high-growth momentum spikes."
+            "High-dividend funds exhibit lower beta than growth assets. A 2.0% buffer "
+            "absorbs equity fluctuation, while 0.75 RVOL and 0.50% ATR capture "
+            "steady dividend accumulation."
         ),
     },
     "Speculative & Commodities": {
@@ -88,9 +88,9 @@ PRESET_CONFIGS = {
         "rvol": 1.25,
         "min_atr": 2.00,
         "rationale": (
-            "Crypto ETFs and precious metals experience intense volatility spikes and false breakouts. "
-            "A wide 4.0% buffer prevents premature triggers, a high RVOL threshold (1.25) demands heavy "
-            "volume conviction, and a 2.00% ATR floor filters out dead-zone chop."
+            "Crypto and commodities experience intense volatility spikes. A 4.0% buffer "
+            "prevents premature triggers, RVOL of 1.25 demands heavy volume conviction, "
+            "and 2.00% ATR filters out dead-zone chop."
         ),
     },
     "Custom": {
@@ -99,19 +99,17 @@ PRESET_CONFIGS = {
         "rvol": 1.00,
         "min_atr": 0.00,
         "rationale": (
-            "Neutral baseline settings tailored for user customization. Standard 2.0% buffer, average "
+            "Neutral baseline settings for custom watchlists. Standard 2.0% buffer, "
             "1.00 RVOL threshold, and no minimum ATR restriction."
         ),
     },
 }
 
+# --- Indicator Calculations ---
 
 def calculate_atr(df, window=14):
-    high, low, close = df["High"], df["Low"], df["Close"]
-    tr = pd.concat(
-        [high - low, (high - close.shift(1)).abs(), (low - close.shift(1)).abs()],
-        axis=1,
-    ).max(axis=1)
+    h, l, c = df["High"], df["Low"], df["Close"]
+    tr = pd.concat([h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
     return tr.rolling(window=window).mean()
 
 
@@ -123,15 +121,12 @@ def calculate_rsi(close, window=14):
 
 
 def calculate_adx(df, window=14):
-    high, low, close = df["High"], df["Low"], df["Close"]
-    up_move = high - high.shift(1)
-    down_move = low.shift(1) - low
-    plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
-    minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
-    tr = pd.concat(
-        [high - low, (high - close.shift(1)).abs(), (low - close.shift(1)).abs()],
-        axis=1,
-    ).max(axis=1)
+    h, l, c = df["High"], df["Low"], df["Close"]
+    up = h - h.shift(1)
+    down = l.shift(1) - l
+    plus_dm = np.where((up > down) & (up > 0), up, 0.0)
+    minus_dm = np.where((down > up) & (down > 0), down, 0.0)
+    tr = pd.concat([h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
     tr_smooth = tr.rolling(window=window).mean()
     plus_di = 100 * (pd.Series(plus_dm, index=df.index).rolling(window=window).mean() / tr_smooth)
     minus_di = 100 * (pd.Series(minus_dm, index=df.index).rolling(window=window).mean() / tr_smooth)
@@ -142,36 +137,77 @@ def calculate_adx(df, window=14):
 def calculate_stochastic(df, k_window=14, d_window=3):
     low_min = df["Low"].rolling(window=k_window).min()
     high_max = df["High"].rolling(window=k_window).max()
-    k_percent = 100 * ((df["Close"] - low_min) / (high_max - low_min))
-    d_percent = k_percent.rolling(window=d_window).mean()
-    return k_percent, d_percent
+    k_pct = 100 * ((df["Close"] - low_min) / (high_max - low_min))
+    d_pct = k_pct.rolling(window=d_window).mean()
+    return k_pct, d_pct
 
 
-def calculate_obv_slope(close, volume, window=10):
-    direction = np.sign(close.diff()).fillna(0)
-    obv = (direction * volume).cumsum()
-    return obv.diff(window)
+def get_bollinger_status(close, p_curr):
+    sma20 = close.rolling(20).mean()
+    std20 = close.rolling(20).std()
+    upper_bb = float((sma20 + (std20 * 2)).iloc[-1])
+    lower_bb = float((sma20 - (std20 * 2)).iloc[-1])
+
+    bw_series = ((sma20 + (std20 * 2)) - (sma20 - (std20 * 2))) / sma20
+    bw_curr = float(bw_series.iloc[-1]) * 100
+    bw_avg = float(bw_series.rolling(50).mean().iloc[-1]) * 100
+    bw_min = float(bw_series.rolling(50).min().iloc[-1]) * 100
+
+    is_squeeze = bw_curr <= (bw_min * 1.15)
+    is_expanding = bw_curr > (bw_avg * 1.20)
+
+    if is_squeeze:
+        return f"SQUEEZE ({bw_curr:.1f}%) - Compression before expansion", is_squeeze
+    if is_expanding:
+        return f"EXPANDING VOLATILITY ({bw_curr:.1f}% vs avg {bw_avg:.1f}%)", False
+    if p_curr >= upper_bb:
+        return f"UPPER BAND STRETCH (${upper_bb:.2f}) - Extended", False
+    if p_curr <= lower_bb:
+        return f"LOWER BAND STRETCH (${lower_bb:.2f}) - Oversold", False
+    return f"NORMAL RANGE ({bw_curr:.1f}% width) - Mid: ${sma20.iloc[-1]:.2f}", False
 
 
-def analyze_enhanced_sma_strategy(
-    tickers,
-    interval="1d",
-    slope_window=5,
-    default_buffer_pct=0.020,
-    rvol_threshold=0.80,
+def evaluate_signal_and_status(
+    p_curr, upper_th, lower_th, slope, adx, rsi, stoch, 
+    obv_slope, is_squeeze, p_ema20, p_sma50, rvol_confirmed, rvol, eff_buf
 ):
+    is_above = p_curr > upper_th
+    is_below = p_curr < lower_th
+
+    if is_above and slope in ["UP", "FLAT"]:
+        if adx < 20:
+            return "⚪ Consolidating", "NO TREND", f"ADX ({adx:.1f}) < 20 indicates non-trending state."
+        if rsi > 70 or stoch > 80:
+            return "🟡 Overbought", "HOLD", f"RSI ({rsi:.1f}) / Stoch ({stoch:.1f}) indicate extension."
+        if obv_slope < 0 and rsi < 50:
+            return "🔴 Divergence", "WARNING", "Negative OBV volume outflow signals distribution."
+        if is_squeeze:
+            return "🟡 Squeeze", "WATCH", "Bollinger Band Squeeze active."
+        if p_curr > p_ema20 and p_curr > p_sma50 and rvol_confirmed:
+            return "🟢 Bullish", "ACCUMULATE", f"Confirmed breakout above buffer (RVOL: {rvol:.2f}x)."
+        if p_curr <= p_ema20 or p_curr <= p_sma50:
+            return "🟡 Pullback", "WAIT", "Macro trend is UP, but price pulling back below short MAs."
+        return "🟡 Warning", "LOW VOLUME", f"Price above buffer, but RVOL ({rvol:.2f}x) lacks confirmation."
+
+    if is_below and slope == "DOWN":
+        if adx < 20:
+            return "⚪ Consolidating", "WEAK BEAR", f"Price below 200 EMA, but weak ADX ({adx:.1f})."
+        if rvol_confirmed:
+            return "🔴 Bearish", "SELL", f"Selling volume confirmed below buffer (RVOL: {rvol:.2f}x)."
+        return "🔴 Bearish", "SELL LOW VOL", f"Price below buffer with DOWN slope (RVOL: {rvol:.2f}x)."
+
+    if lower_th <= p_curr <= upper_th:
+        return "⚪ Neutral", "BUFFER ZONE", f"Price within +/-{eff_buf*100:.1f}% noise buffer of 200 EMA."
+
+    return "🟡 Warning", "CAUTION", f"Price crossed EMA but slope ({slope}) does not confirm."
+
+
+def analyze_enhanced_sma_strategy(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
     results = []
-    lookback = "10y" if interval == "1wk" else "2y"
 
     for ticker in tickers:
         try:
-            df = yf.download(
-                ticker,
-                period=lookback,
-                interval=interval,
-                auto_adjust=True,
-                progress=False,
-            )
+            df = yf.download(ticker, period="2y", interval="1d", auto_adjust=True, progress=False)
             if df.empty or len(df) < 205:
                 continue
 
@@ -181,37 +217,38 @@ def analyze_enhanced_sma_strategy(
             open_p = df["Open"].squeeze()
             volume = df["Volume"].squeeze()
 
-            df_clean = pd.DataFrame(
-                {"High": high, "Low": low, "Close": close, "Open": open_p}
-            )
-            curr_price = float(close.iloc[-1])
-            curr_open = float(open_p.iloc[-1])
-            curr_volume = float(volume.iloc[-1])
+            df_clean = pd.DataFrame({"High": high, "Low": low, "Close": close, "Open": open_p})
+            p_curr = float(close.iloc[-1])
+            p_open = float(open_p.iloc[-1])
+            v_curr = float(volume.iloc[-1])
 
             vol_20_sma = float(volume.rolling(20).mean().iloc[-1])
-            rvol = curr_volume / vol_20_sma if vol_20_sma > 0 else 1.0
+            rvol = v_curr / vol_20_sma if vol_20_sma > 0 else 1.0
             rvol_confirmed = rvol >= rvol_threshold
 
-            is_green_day = curr_price >= curr_open
-            if rvol >= 1.25 and is_green_day:
-                volume_status = "BULLISH (HEAVY BUYING)"
-            elif rvol >= 1.25 and not is_green_day:
-                volume_status = "BEARISH (HEAVY SELLING)"
+            is_green = p_curr >= p_open
+            if rvol >= 1.25 and is_green:
+                vol_status = "BULLISH (HEAVY BUYING)"
+            elif rvol >= 1.25 and not is_green:
+                vol_status = "BEARISH (HEAVY SELLING)"
             else:
-                volume_status = "NORMAL / MODERATE"
+                vol_status = "NORMAL / MODERATE"
 
             ema20 = close.ewm(span=20, adjust=False).mean()
             sma50 = close.rolling(50).mean()
             ema200 = close.ewm(span=200, adjust=False).mean()
 
-            curr_ema20 = float(ema20.iloc[-1])
-            curr_sma50 = float(sma50.iloc[-1])
-            curr_ema200 = float(ema200.iloc[-1])
-            prev_ema200 = float(ema200.iloc[-(slope_window + 1)])
+            p_ema20 = float(ema20.iloc[-1])
+            p_sma50 = float(sma50.iloc[-1])
+            p_ema200 = float(ema200.iloc[-1])
+            p_prev_ema200 = float(ema200.iloc[-6])
 
             atr = float(calculate_atr(df_clean).iloc[-1])
-            atr_pct = (atr / curr_price) * 100
-            effective_buffer = max(default_buffer_pct, (atr / curr_price) * 1.5)
+            atr_pct = (atr / p_curr) * 100
+            eff_buf = max(default_buffer_pct, (atr / p_curr) * 1.5)
 
-            upper_th = curr_ema200 * (1.0 + effective_buffer)
-            lower_th = curr_ema200
+            upper_th = p_ema200 * (1.0 + eff_buf)
+            lower_th = p_ema200 * (1.0 - eff_buf)
+
+            rsi = float(calculate_rsi(close).iloc[-1])
+            adx = float(calculate_adx(df_clean).
