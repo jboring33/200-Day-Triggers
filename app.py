@@ -67,7 +67,7 @@ PRESET_CONFIGS = {
     },
 }
 
-# --- Indicators ---
+# --- Technical Helper Functions ---
 
 def get_atr(df, window=14):
     h, l, c = df["High"], df["Low"], df["Close"]
@@ -122,30 +122,30 @@ def get_bollinger(close, price):
 def get_logic_result(price, u_th, l_th, slope, adx, rsi, stoch, obv_s, is_sq, ema20, sma50, rvol_ok, rvol, buf):
     if price > u_th and slope in ["UP", "FLAT"]:
         if adx < 20:
-            return "⚪ Consolidating", "NO TREND", f"ADX ({adx:.1f}) < 20 indicates no trend."
+            return "⚪ Consolidating", "NO TREND", f"ADX ({adx:.1f}) < 20 indicates no macro trend strength."
         if rsi > 70 or stoch > 80:
-            return "🟡 Overbought", "HOLD", f"RSI ({rsi:.1f}) / Stoch ({stoch:.1f}) extended."
+            return "🟡 Overbought", "HOLD", f"Macro UP, but short-term momentum (RSI {rsi:.1f} / Stoch {stoch:.1f}) is extended."
         if obv_s < 0 and rsi < 50:
-            return "🔴 Divergence", "WARNING", "Negative OBV outflow signals distribution."
+            return "🔴 Divergence", "WARNING", "Negative OBV volume outflow signals active distribution."
         if is_sq:
-            return "🟡 Squeeze", "WATCH", "Bollinger Band Squeeze active."
+            return "🟡 Squeeze", "WATCH", "Bollinger Band Squeeze active—prepare for breakout expansion."
         if price > ema20 and price > sma50 and rvol_ok:
-            return "🟢 Bullish", "ACCUMULATE", f"Confirmed breakout (RVOL: {rvol:.2f}x)."
+            return "🟢 Bullish", "ACCUMULATE", f"Confirmed entry: Macro UP + Short-term MAs aligned + RVOL ({rvol:.2f}x)."
         if price <= ema20 or price <= sma50:
-            return "🟡 Pullback", "WAIT", "Macro UP, but pulling back below short MAs."
-        return "🟡 Warning", "LOW VOLUME", f"Above buffer, but RVOL ({rvol:.2f}x) lacks volume."
+            return "🟡 Pullback", "WAIT", "Macro UP (Weeks/Months), but pulling back below short-term MAs."
+        return "🟡 Warning", "LOW VOLUME", f"Price above buffer, but short-term RVOL ({rvol:.2f}x) lacks confirmation."
 
     if price < l_th and slope == "DOWN":
         if adx < 20:
             return "⚪ Consolidating", "WEAK BEAR", f"Below 200 EMA, but weak ADX ({adx:.1f})."
         if rvol_ok:
-            return "🔴 Bearish", "SELL", f"Selling volume confirmed (RVOL: {rvol:.2f}x)."
+            return "🔴 Bearish", "SELL", f"Selling volume confirmed below buffer (RVOL: {rvol:.2f}x)."
         return "🔴 Bearish", "SELL LOW VOL", f"Below buffer with DOWN slope (RVOL: {rvol:.2f}x)."
 
     if l_th <= price <= u_th:
         return "⚪ Neutral", "BUFFER ZONE", f"Price within +/-{buf*100:.1f}% noise buffer of 200 EMA."
 
-    return "🟡 Warning", "CAUTION", f"Crossed EMA but slope ({slope}) unconfirmed."
+    return "🟡 Warning", "CAUTION", f"Crossed 200 EMA but slope ({slope}) unconfirmed."
 
 def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
     results = []
@@ -211,21 +211,25 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
 
             pct_ema200 = ((price - p_ema200) / p_ema200) * 100.0
 
+            # Organized directly to separate Long-Term Macro from Short-Term Timing
             results.append({
                 "Ticker": t,
                 "Status": status,
                 "Signal": signal,
                 "Price": round(price, 2),
+                # --- Long-Term Macro Trend (Weeks/Months) ---
                 "200 EMA": round(p_ema200, 2),
                 "% vs 200 EMA": f"{pct_ema200:+.2f}%",
+                "200 Slope": slope,
+                "ADX Trend": round(adx, 1),
+                # --- Short-Term Timing & Confirmation (Days/Weeks) ---
                 "RVOL": round(rvol, 2),
-                "Volume Signal": vol_status,
-                "OBV Signal": obv_label,
-                "RSI": round(rsi, 1),
+                "Vol Signal": vol_status,
+                "RSI (14)": round(rsi, 1),
                 "Stoch %K": round(stoch, 1),
-                "ADX": round(adx, 1),
+                "OBV Flow": obv_label,
+                "Bollinger Volatility": bb_text,
                 "ATR (%)": round(atr_pct, 2),
-                "Bollinger Status": bb_text,
                 "Trigger Rationale": msg,
             })
         except Exception as e:
@@ -240,20 +244,20 @@ st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 with st.expander("📖 **Methodology Guide: Status vs. Signal & Preset Calibration**"):
     st.markdown("""
-    ### **1. Status (Market Condition)**
-    * 🟢 **Bullish:** Price above upper buffer, EMA200 flat/up.
-    * 🔴 **Bearish:** Price below lower buffer, EMA200 down.
-    * ⚪ **Neutral:** Price inside buffer or ADX < 20.
-    * 🟡 **Overbought / Squeeze / Pullback:** Trend intact, short-term extension/compression.
+    ### **1. Status (Macro Regime)**
+    * 🟢 **Bullish:** Price above upper buffer, 200 EMA slope flat/up.
+    * 🔴 **Bearish:** Price below lower buffer, 200 EMA slope down.
+    * ⚪ **Neutral:** Price inside buffer or ADX < 20 (low trend strength).
+    * 🟡 **Overbought / Squeeze / Pullback:** Macro trend intact, short-term extension or compression.
 
     ---
 
-    ### **2. Signal (Actionable Trigger)**
-    * **ACCUMULATE:** Price > buffer + RVOL confirmed.
-    * **HOLD:** Bullish macro + overbought RSI/Stoch.
-    * **WAIT:** Favorable trend, pulling back below short MAs.
-    * **WATCH:** Active Bollinger Squeeze.
-    * **SELL / WARNING:** Breakdown below buffer or volume divergence.
+    ### **2. Signal (Actionable Entry / Exit Trigger)**
+    * **ACCUMULATE:** Macro Bullish + Price above 20/50 MAs + Short-term volume confirmed (`RVOL >= threshold`).
+    * **HOLD:** Long-term trend intact, but short-term momentum (RSI/Stoch) is extended.
+    * **WAIT:** Favorable multi-month trend, but short-term pullbacks are active below 20 EMA or 50 SMA.
+    * **WATCH:** Active Bollinger Band Squeeze—compression before volatility expansion.
+    * **SELL / WARNING:** Multi-week breakdown below lower 200 EMA buffer or negative OBV divergence.
 
     ---
 
