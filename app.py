@@ -105,41 +105,47 @@ PRESET_CONFIGS = {
     },
 }
 
-# --- Indicator Calculations ---
+# --- Technical Helper Functions ---
 
 def calculate_atr(df, window=14):
     h, l, c = df["High"], df["Low"], df["Close"]
-    tr = pd.concat([h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
-    return tr.rolling(window=window).mean()
+    tr1 = h - l
+    tr2 = (h - c.shift(1)).abs()
+    tr3 = (l - c.shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    res = tr.rolling(window=window).mean()
+    return float(res.iloc[-1])
 
 
 def calculate_rsi(close, window=14):
     delta = close.diff()
     gain = delta.where(delta > 0, 0).rolling(window=window).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
-    return 100 - (100 / (1 + (gain / loss)))
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return float(rsi.iloc[-1])
 
 
 def calculate_adx(df, window=14):
     h, l, c = df["High"], df["Low"], df["Close"]
     up = h - h.shift(1)
     down = l.shift(1) - l
-    plus_dm = np.where((up > down) & (up > 0), up, 0.0)
-    minus_dm = np.where((down > up) & (down > 0), down, 0.0)
+    p_dm = np.where((up > down) & (up > 0), up, 0.0)
+    m_dm = np.where((down > up) & (down > 0), down, 0.0)
     tr = pd.concat([h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
-    tr_smooth = tr.rolling(window=window).mean()
-    plus_di = 100 * (pd.Series(plus_dm, index=df.index).rolling(window=window).mean() / tr_smooth)
-    minus_di = 100 * (pd.Series(minus_dm, index=df.index).rolling(window=window).mean() / tr_smooth)
-    dx = 100 * (abs(plus_di - minus_di) / (plus_di + minus_di))
-    return dx.rolling(window=window).mean()
+    tr_s = tr.rolling(window=window).mean()
+    p_di = 100 * (pd.Series(p_dm, index=df.index).rolling(window=window).mean() / tr_s)
+    m_di = 100 * (pd.Series(m_dm, index=df.index).rolling(window=window).mean() / tr_s)
+    dx = 100 * (abs(p_di - m_di) / (p_di + m_di))
+    adx_series = dx.rolling(window=window).mean()
+    return float(adx_series.iloc[-1])
 
 
-def calculate_stochastic(df, k_window=14, d_window=3):
-    low_min = df["Low"].rolling(window=k_window).min()
-    high_max = df["High"].rolling(window=k_window).max()
-    k_pct = 100 * ((df["Close"] - low_min) / (high_max - low_min))
-    d_pct = k_pct.rolling(window=d_window).mean()
-    return k_pct, d_pct
+def calculate_stochastic(df, k_window=14):
+    l_min = df["Low"].rolling(window=k_window).min()
+    h_max = df["High"].rolling(window=k_window).max()
+    k_pct = 100 * ((df["Close"] - l_min) / (h_max - l_min))
+    return float(k_pct.iloc[-1])
 
 
 def get_bollinger_status(close, p_curr):
@@ -148,10 +154,10 @@ def get_bollinger_status(close, p_curr):
     upper_bb = float((sma20 + (std20 * 2)).iloc[-1])
     lower_bb = float((sma20 - (std20 * 2)).iloc[-1])
 
-    bw_series = ((sma20 + (std20 * 2)) - (sma20 - (std20 * 2))) / sma20
-    bw_curr = float(bw_series.iloc[-1]) * 100
-    bw_avg = float(bw_series.rolling(50).mean().iloc[-1]) * 100
-    bw_min = float(bw_series.rolling(50).min().iloc[-1]) * 100
+    bw = ((sma20 + (std20 * 2)) - (sma20 - (std20 * 2))) / sma20
+    bw_curr = float(bw.iloc[-1]) * 100
+    bw_avg = float(bw.rolling(50).mean().iloc[-1]) * 100
+    bw_min = float(bw.rolling(50).min().iloc[-1]) * 100
 
     is_squeeze = bw_curr <= (bw_min * 1.15)
     is_expanding = bw_curr > (bw_avg * 1.20)
@@ -243,12 +249,8 @@ def analyze_enhanced_sma_strategy(tickers, default_buffer_pct=0.020, rvol_thresh
             p_ema200 = float(ema200.iloc[-1])
             p_prev_ema200 = float(ema200.iloc[-6])
 
-            atr = float(calculate_atr(df_clean).iloc[-1])
-            atr_pct = (atr / p_curr) * 100
-            eff_buf = max(default_buffer_pct, (atr / p_curr) * 1.5)
+            atr_val = calculate_atr(df_clean)
+            atr_pct = (atr_val / p_curr) * 100
+            eff_buf = max(default_buffer_pct, (atr_val / p_curr) * 1.5)
 
-            upper_th = p_ema200 * (1.0 + eff_buf)
-            lower_th = p_ema200 * (1.0 - eff_buf)
-
-            rsi = float(calculate_rsi(close).iloc[-1])
-            adx = float(calculate_adx(df_clean).
+            upper_th = p
