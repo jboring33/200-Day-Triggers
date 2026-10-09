@@ -110,30 +110,30 @@ def get_bollinger(close, price):
     is_sq = bw_c <= (bw_m * 1.15)
     
     if is_sq:
-        return f"SQUEEZE ({bw_c:.1f}%) - Tight compression", True
+        return f"SQUEEZE ({bw_c:.1f}%)", True
     if bw_c > (bw_a * 1.20):
-        return f"EXPANDING VOL ({bw_c:.1f}% vs avg {bw_a:.1f}%)", False
+        return f"EXPANDING VOL ({bw_c:.1f}%)", False
     if price >= u_bb:
-        return f"UPPER BAND STRETCH (${u_bb:.2f})", False
+        return f"UPPER BAND (${u_bb:.2f})", False
     if price <= l_bb:
-        return f"LOWER BAND STRETCH (${l_bb:.2f})", False
-    return f"NORMAL RANGE ({bw_c:.1f}% width)", False
+        return f"LOWER BAND (${l_bb:.2f})", False
+    return f"NORMAL ({bw_c:.1f}%)", False
 
 def get_logic_result(price, u_th, l_th, slope, adx, rsi, stoch, obv_s, is_sq, ema20, sma50, rvol_ok, rvol, buf):
     if price > u_th and slope in ["UP", "FLAT"]:
         if adx < 20:
-            return "⚪ Consolidating", "NO TREND", f"ADX ({adx:.1f}) < 20 indicates no macro trend strength."
+            return "⚪ Consolidating", "NO TREND", f"ADX ({adx:.1f}) < 20 indicates weak trend strength."
         if rsi > 70 or stoch > 80:
-            return "🟡 Overbought", "HOLD", f"Macro UP, but short-term momentum (RSI {rsi:.1f} / Stoch {stoch:.1f}) is extended."
+            return "🟡 Overbought", "HOLD", f"Macro UP, but RSI ({rsi:.1f}) / Stoch ({stoch:.1f}) stretched."
         if obv_s < 0 and rsi < 50:
-            return "🔴 Divergence", "WARNING", "Negative OBV volume outflow signals active distribution."
+            return "🔴 Divergence", "WARNING", "Negative OBV outflow signals distribution."
         if is_sq:
             return "🟡 Squeeze", "WATCH", "Bollinger Band Squeeze active—prepare for breakout expansion."
         if price > ema20 and price > sma50 and rvol_ok:
-            return "🟢 Bullish", "ACCUMULATE", f"Confirmed entry: Macro UP + Short-term MAs aligned + RVOL ({rvol:.2f}x)."
+            return "🟢 Bullish", "ACCUMULATE", f"Confirmed entry: Macro UP + Short MAs aligned + RVOL ({rvol:.2f}x)."
         if price <= ema20 or price <= sma50:
-            return "🟡 Pullback", "WAIT", "Macro UP (Weeks/Months), but pulling back below short-term MAs."
-        return "🟡 Warning", "LOW VOLUME", f"Price above buffer, but short-term RVOL ({rvol:.2f}x) lacks confirmation."
+            return "🟡 Pullback", "WAIT", "Macro UP, but price is pulling back below 20 EMA / 50 SMA."
+        return "🟡 Warning", "LOW VOLUME", f"Price above buffer, but RVOL ({rvol:.2f}x) lacks confirmation."
 
     if price < l_th and slope == "DOWN":
         if adx < 20:
@@ -148,7 +148,9 @@ def get_logic_result(price, u_th, l_th, slope, adx, rsi, stoch, obv_s, is_sq, em
     return "🟡 Warning", "CAUTION", f"Crossed 200 EMA but slope ({slope}) unconfirmed."
 
 def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
-    results = []
+    macro_results = []
+    execution_results = []
+
     for t in tickers:
         try:
             df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
@@ -172,9 +174,9 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
 
             is_green = price >= open_p
             if rvol >= 1.25 and is_green:
-                vol_status = "BULLISH (HEAVY BUYING)"
+                vol_status = "BULLISH (HEAVY BUY)"
             elif rvol >= 1.25 and not is_green:
-                vol_status = "BEARISH (HEAVY SELLING)"
+                vol_status = "BEARISH (HEAVY SELL)"
             else:
                 vol_status = "NORMAL / MODERATE"
 
@@ -197,7 +199,7 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
 
             dir_s = np.sign(c.diff()).fillna(0)
             obv_s = float((dir_s * v).cumsum().diff(10).iloc[-1])
-            obv_label = "BULLISH (INFLOW)" if obv_s > 0 else "BEARISH (OUTFLOW)"
+            obv_label = "INFLOW" if obv_s > 0 else "OUTFLOW"
 
             bb_text, is_sq = get_bollinger(c, price)
 
@@ -210,32 +212,38 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
             )
 
             pct_ema200 = ((price - p_ema200) / p_ema200) * 100.0
+            ma_alignment = "ABOVE 20 & 50" if (price > ema20 and price > sma50) else "BELOW SHORT MAs"
 
-            # Organized directly to separate Long-Term Macro from Short-Term Timing
-            results.append({
+            # 1. Macro Trend Table (Weeks to Months)
+            macro_results.append({
                 "Ticker": t,
-                "Status": status,
-                "Signal": signal,
                 "Price": round(price, 2),
-                # --- Long-Term Macro Trend (Weeks/Months) ---
+                "Macro Status": status,
                 "200 EMA": round(p_ema200, 2),
                 "% vs 200 EMA": f"{pct_ema200:+.2f}%",
-                "200 Slope": slope,
-                "ADX Trend": round(adx, 1),
-                # --- Short-Term Timing & Confirmation (Days/Weeks) ---
+                "200 EMA Slope": slope,
+                "ADX Strength": round(adx, 1),
+                "Noise Buffer": f"±{eff_buf*100:.1f}%",
+            })
+
+            # 2. Short-Term Execution & Triggers Table (Days to Weeks)
+            execution_results.append({
+                "Ticker": t,
+                "Action Signal": signal,
+                "Short MAs": ma_alignment,
                 "RVOL": round(rvol, 2),
-                "Vol Signal": vol_status,
+                "Vol State": vol_status,
                 "RSI (14)": round(rsi, 1),
                 "Stoch %K": round(stoch, 1),
                 "OBV Flow": obv_label,
-                "Bollinger Volatility": bb_text,
+                "Bollinger State": bb_text,
                 "ATR (%)": round(atr_pct, 2),
-                "Trigger Rationale": msg,
+                "Execution Rationale": msg,
             })
         except Exception as e:
             st.error(f"Error processing {t}: {str(e)}")
 
-    return pd.DataFrame(results)
+    return pd.DataFrame(macro_results), pd.DataFrame(execution_results)
 
 # --- UI Layout ---
 
@@ -244,20 +252,22 @@ st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 with st.expander("📖 **Methodology Guide: Status vs. Signal & Preset Calibration**"):
     st.markdown("""
-    ### **1. Status (Macro Regime)**
-    * 🟢 **Bullish:** Price above upper buffer, 200 EMA slope flat/up.
-    * 🔴 **Bearish:** Price below lower buffer, 200 EMA slope down.
-    * ⚪ **Neutral:** Price inside buffer or ADX < 20 (low trend strength).
-    * 🟡 **Overbought / Squeeze / Pullback:** Macro trend intact, short-term extension or compression.
+    ### **1. Long-Term Macro Trend Table (Weeks–Months)**
+    Defines the structural regime relative to the 200 EMA buffer:
+    * 🟢 **Bullish:** Price above upper noise buffer with an upward or flat 200 EMA trajectory.
+    * 🔴 **Bearish:** Price below lower noise buffer with a downward 200 EMA trajectory.
+    * ⚪ **Neutral / Consolidating:** Price inside buffer or ADX < 20 (lacks trend strength).
+    * 🟡 **Overbought / Squeeze / Pullback:** Structural trend intact, short-term extension present.
 
     ---
 
-    ### **2. Signal (Actionable Entry / Exit Trigger)**
-    * **ACCUMULATE:** Macro Bullish + Price above 20/50 MAs + Short-term volume confirmed (`RVOL >= threshold`).
-    * **HOLD:** Long-term trend intact, but short-term momentum (RSI/Stoch) is extended.
-    * **WAIT:** Favorable multi-month trend, but short-term pullbacks are active below 20 EMA or 50 SMA.
-    * **WATCH:** Active Bollinger Band Squeeze—compression before volatility expansion.
-    * **SELL / WARNING:** Multi-week breakdown below lower 200 EMA buffer or negative OBV divergence.
+    ### **2. Short-Term Execution & Triggers Table (Days–Weeks)**
+    Provides precise entry/exit timing based on short-term indicators:
+    * **ACCUMULATE:** High conviction entry—Macro Bullish + Price above 20/50 MAs + Volume confirmed (`RVOL >= threshold`).
+    * **HOLD:** Position active—Macro Bullish, but short-term momentum (RSI/Stoch) is extended.
+    * **WAIT:** Macro Bullish, but price is pulling back below short-term moving averages (20 EMA / 50 SMA).
+    * **WATCH:** Active Bollinger Squeeze—volatility compression preceding a potential breakout.
+    * **SELL / WARNING:** Breakdown below lower 200 EMA buffer or negative OBV divergence.
 
     ---
 
@@ -328,20 +338,27 @@ if run_screener:
     tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
     if tickers_list:
         with st.spinner("Analyzing market data..."):
-            df_results = analyze_tickers(
+            df_macro, df_exec = analyze_tickers(
                 tickers_list,
                 default_buffer_pct=buffer_setting / 100.0,
                 rvol_threshold=rvol_setting,
             )
-        if not df_results.empty:
-            st.subheader("📊 Unified Trigger & Analysis Matrix")
-            st.dataframe(df_results, use_container_width=True, hide_index=True)
+        if not df_macro.empty:
+            st.subheader("🌐 1. Macro Trend Regime (Weeks to Months)")
+            st.dataframe(df_macro, use_container_width=True, hide_index=True)
 
             st.divider()
-            csv_data = df_results.to_csv(index=False)
+
+            st.subheader("⚡ 2. Short-Term Execution & Triggers (Days to Weeks)")
+            st.dataframe(df_exec, use_container_width=True, hide_index=True)
+
+            st.divider()
+            # Combine both for full CSV export
+            full_df = pd.merge(df_macro, df_exec, on="Ticker")
+            csv_data = full_df.to_csv(index=False)
             st.download_button(
-                "📥 Download Full Table CSV",
+                "📥 Download Full Matrix CSV",
                 csv_data,
-                "200_day_triggers.csv",
+                "200_day_triggers_full.csv",
                 "text/csv",
             )
