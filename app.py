@@ -167,53 +167,62 @@ def analyze_enhanced_sma_strategy(
             if df.empty or len(df) < 205:
                 continue
 
-            close = df["Close"].squeezeThe `SyntaxError: unterminated string literal` on line 193 occurs because the string assignment for `volume_status = "NORMAL / MODERATE"` was missing a closing double quote in the deployed file[cite: 8].
+            close = df["Close"].squeeze()
+            high = df["High"].squeeze()
+            low = df["Low"].squeeze()
+            open_p = df["Open"].squeeze()
+            volume = df["Volume"].squeeze()
 
-Here is the complete, fully validated code file. Copy and paste this block into your `app.py` file to resolve the issue:
+            df_clean = pd.DataFrame(
+                {"High": high, "Low": low, "Close": close, "Open": open_p}
+            )
+            curr_price = float(close.iloc[-1])
+            curr_open = float(open_p.iloc[-1])
+            curr_volume = float(volume.iloc[-1])
 
-```python
-"""
-Repository: 200 Day Triggers
-Description: Streamlit Web Application for Macro (200 EMA) and Short-Term Trend Screening.
-Features: Interactive Preset Selection, Custom Ticker Overrides, Top Run Button, 
-          Dynamic URL Sync for Bookmarks, and Status vs Signal Methodology Documentation.
-"""
+            vol_20_sma = float(volume.rolling(20).mean().iloc[-1])
+            rvol = curr_volume / vol_20_sma if vol_20_sma > 0 else 1.0
+            rvol_confirmed = rvol >= rvol_threshold
 
-from datetime import datetime
-import numpy as np
-import pandas as pd
-import streamlit as st
-import yfinance as yf
+            is_green_day = curr_price >= curr_open
+            if rvol >= 1.25 and is_green_day:
+                volume_status = "BULLISH (HEAVY BUYING)"
+            elif rvol >= 1.25 and not is_green_day:
+                volume_status = "BEARISH (HEAVY SELLING)"
+            else:
+                volume_status = "NORMAL / MODERATE"
 
-st.set_page_config(page_title="200 Day Triggers", page_icon="📈", layout="wide")
+            ema20 = close.ewm(span=20, adjust=False).mean()
+            sma50 = close.rolling(50).mean()
+            ema200 = close.ewm(span=200, adjust=False).mean()
 
-REPO_NAME = "200 Day Triggers"
+            curr_ema20 = float(ema20.iloc[-1])
+            curr_sma50 = float(sma50.iloc[-1])
+            curr_ema200 = float(ema200.iloc[-1])
+            prev_ema200 = float(ema200.iloc[-(slope_window + 1)])
 
-PRESET_CONFIGS = {
-    "Broad Market": {
-        "tickers": "SPY, QQQ, DJIA, EMXC, VEA",
-        "buffer": 2.0,
-        "rvol": 0.80,
-        "min_atr": 0.75,
-        "rationale": (
-            "Broad indices exhibit moderate volatility and high liquidity. A 2.0% buffer filters out benchmark noise, "
-            "an RVOL of 0.80 allows for steady index accumulation tracking, and a 0.75% ATR minimum screens out stagnant conditions."
-        ),
-    },
-    "Mag7": {
-        "tickers": "NVDA, AAPL, MSFT, AMZN, GOOGL, META, TSLA",
-        "buffer": 2.5,
-        "rvol": 1.00,
-        "min_atr": 1.00,
-        "rationale": (
-            "High-beta mega-cap tech stocks require wider noise filters to accommodate intraday price swings (2.5%). "
-            "An RVOL threshold of 1.00 ensures breakouts are backed by institutional volume, while a 1.00% ATR floor filters low-range consolidation."
-        ),
-    },
-    "Sector ETFs": {
-        "tickers": "XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU, VGT",
-        "buffer": 2.0,
-        "rvol": 0.85,
-        "min_atr": 0.50,
-        "rationale": (
-            "Sectors vary in beta (e.g., XLE vs XLU). A 2.0%
+            atr = float(calculate_atr(df_clean).iloc[-1])
+            atr_pct = (atr / curr_price) * 100
+            effective_buffer = max(default_buffer_pct, (atr / curr_price) * 1.5)
+
+            upper_th = curr_ema200 * (1.0 + effective_buffer)
+            lower_th = curr_ema200 * (1.0 - effective_buffer)
+
+            rsi = float(calculate_rsi(close).iloc[-1])
+            adx = float(calculate_adx(df_clean).iloc[-1])
+            k_stoch, d_stoch = calculate_stochastic(df_clean)
+            curr_stoch = float(k_stoch.iloc[-1])
+
+            obv_slope = float(calculate_obv_slope(close, volume).iloc[-1])
+            obv_label = "BULLISH (INFLOW)" if obv_slope > 0 else "BEARISH (OUTFLOW)"
+
+            # --- Bollinger Band Volatility Evaluation ---
+            sma20 = close.rolling(20).mean()
+            std20 = close.rolling(20).std()
+            upper_bb = float((sma20 + (std20 * 2)).iloc[-1])
+            lower_bb = float((sma20 - (std20 * 2)).iloc[-1])
+
+            bb_width_series = ((sma20 + (std20 * 2)) - (sma20 - (std20 * 2))) / sma20
+            curr_bb_width = float(bb_width_series.iloc[-1]) * 100
+            avg_50_bb_width = float(bb_width_series.rolling(50).mean().iloc[-1]) * 100
+            min_50_bb_width = float(bb_width_series.rolling(50).min().iloc
