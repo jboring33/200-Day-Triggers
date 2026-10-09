@@ -22,8 +22,9 @@ PRESET_CONFIGS = {
         "rvol": 0.80,
         "min_atr": 0.75,
         "rationale": (
-            "Broad indices exhibit moderate volatility and high liquidity. A 2.0% buffer filters out benchmark noise, "
-            "an RVOL of 0.80 allows for steady index accumulation tracking, and a 0.75% ATR minimum screens out stagnant conditions."
+            "Broad indices exhibit moderate volatility and high liquidity. A 2.0% buffer "
+            "filters out benchmark noise, an RVOL of 0.80 allows for steady index accumulation "
+            "tracking, and a 0.75% ATR minimum screens out stagnant conditions."
         ),
     },
     "Mag7": {
@@ -32,8 +33,9 @@ PRESET_CONFIGS = {
         "rvol": 1.00,
         "min_atr": 1.00,
         "rationale": (
-            "High-beta mega-cap tech stocks require wider noise filters to accommodate intraday price swings (2.5%). "
-            "An RVOL threshold of 1.00 ensures breakouts are backed by institutional volume, while a 1.00% ATR floor filters low-range consolidation."
+            "High-beta mega-cap tech stocks require wider noise filters to accommodate intraday "
+            "price swings (2.5%). An RVOL threshold of 1.00 ensures breakouts are backed by "
+            "institutional volume, while a 1.00% ATR floor filters low-range consolidation."
         ),
     },
     "Sector ETFs": {
@@ -42,8 +44,9 @@ PRESET_CONFIGS = {
         "rvol": 0.85,
         "min_atr": 0.50,
         "rationale": (
-            "Sectors vary in beta (e.g., XLE vs XLU). A 2.0% buffer balances defensive and cyclical ranges, "
-            "an RVOL of 0.85 confirms sector rotation, and a 0.50% ATR floor accounts for lower-volatility defensive sector ETFs."
+            "Sectors vary in beta (e.g., XLE vs XLU). A 2.0% buffer balances defensive and cyclical "
+            "ranges, an RVOL of 0.85 confirms sector rotation, and a 0.50% ATR floor accounts "
+            "for lower-volatility defensive sector ETFs."
         ),
     },
     "Bond ETFs": {
@@ -52,8 +55,9 @@ PRESET_CONFIGS = {
         "rvol": 0.10,
         "min_atr": 0.00,
         "rationale": (
-            "Fixed-income and ultra-short ETFs move in tight price bands with lower volume variance. A tight 1.0% buffer prevents "
-            "false macro regime changes, an RVOL of 0.10 prevents false non-volume flags, and an ATR of 0.00% ensures low-volatility income assets aren't filtered out."
+            "Fixed-income and ultra-short ETFs move in tight price bands with lower volume variance. "
+            "A tight 1.0% buffer prevents false macro regime changes, an RVOL of 0.10 prevents false "
+            "non-volume flags, and an ATR of 0.00% ensures low-volatility income assets aren't filtered out."
         ),
     },
     "Covered Call ETFs": {
@@ -62,8 +66,9 @@ PRESET_CONFIGS = {
         "rvol": 0.75,
         "min_atr": 0.25,
         "rationale": (
-            "Option-overlay ETFs capped by call sales experience dampened upside volatility. A 1.5% buffer captures trend shifts without "
-            "over-filtering option-capped moves, paired with lower RVOL (0.75) and ATR (0.25%) requirements suited for yield strategies."
+            "Option-overlay ETFs capped by call sales experience dampened upside volatility. "
+            "A 1.5% buffer captures trend shifts without over-filtering option-capped moves, paired "
+            "with lower RVOL (0.75) and ATR (0.25%) requirements suited for yield strategies."
         ),
     },
     "Dividend ETFs": {
@@ -72,8 +77,9 @@ PRESET_CONFIGS = {
         "rvol": 0.75,
         "min_atr": 0.50,
         "rationale": (
-            "Value and high-dividend funds exhibit lower beta than growth assets. A 2.0% buffer absorbs standard equity fluctuation, "
-            "while 0.75 RVOL and 0.50% ATR capture steady dividend accumulation without demanding high-growth momentum spikes."
+            "Value and high-dividend funds exhibit lower beta than growth assets. A 2.0% buffer absorbs "
+            "standard equity fluctuation, while 0.75 RVOL and 0.50% ATR capture steady dividend "
+            "accumulation without demanding high-growth momentum spikes."
         ),
     },
     "Speculative & Commodities": {
@@ -82,8 +88,9 @@ PRESET_CONFIGS = {
         "rvol": 1.25,
         "min_atr": 2.00,
         "rationale": (
-            "Crypto ETFs and precious metals experience intense volatility spikes and false breakouts. A wide 4.0% buffer prevents premature triggers, "
-            "a high RVOL threshold (1.25) demands heavy volume conviction, and a 2.00% ATR floor filters out dead-zone chop."
+            "Crypto ETFs and precious metals experience intense volatility spikes and false breakouts. "
+            "A wide 4.0% buffer prevents premature triggers, a high RVOL threshold (1.25) demands heavy "
+            "volume conviction, and a 2.00% ATR floor filters out dead-zone chop."
         ),
     },
     "Custom": {
@@ -92,7 +99,8 @@ PRESET_CONFIGS = {
         "rvol": 1.00,
         "min_atr": 0.00,
         "rationale": (
-            "Neutral baseline settings tailored for user customization. Standard 2.0% buffer, average 1.00 RVOL threshold, and no minimum ATR restriction."
+            "Neutral baseline settings tailored for user customization. Standard 2.0% buffer, average "
+            "1.00 RVOL threshold, and no minimum ATR restriction."
         ),
     },
 }
@@ -206,25 +214,4 @@ def analyze_enhanced_sma_strategy(
             effective_buffer = max(default_buffer_pct, (atr / curr_price) * 1.5)
 
             upper_th = curr_ema200 * (1.0 + effective_buffer)
-            lower_th = curr_ema200 * (1.0 - effective_buffer)
-
-            rsi = float(calculate_rsi(close).iloc[-1])
-            adx = float(calculate_adx(df_clean).iloc[-1])
-            k_stoch, d_stoch = calculate_stochastic(df_clean)
-            curr_stoch = float(k_stoch.iloc[-1])
-
-            obv_slope = float(calculate_obv_slope(close, volume).iloc[-1])
-            obv_label = "BULLISH (INFLOW)" if obv_slope > 0 else "BEARISH (OUTFLOW)"
-
-            # --- Bollinger Band Volatility Evaluation ---
-            sma20 = close.rolling(20).mean()
-            std20 = close.rolling(20).std()
-            upper_bb = float((sma20 + (std20 * 2)).iloc[-1])
-            lower_bb = float((sma20 - (std20 * 2)).iloc[-1])
-
-            bb_width_series = ((sma20 + (std20 * 2)) - (sma20 - (std20 * 2))) / sma20
-            curr_bb_width = float(bb_width_series.iloc[-1]) * 100
-            avg_50_bb_width = float(bb_width_series.rolling(50).mean().iloc[-1]) * 100
-            min_50_bb_width = float(bb_width_series.rolling(50).min().iloc[-1]) * 100
-
-            is_squeeze = curr_bb_width <= (min_50_bb_width * 1.
+            lower_th = curr_ema200
