@@ -15,4 +15,3 @@ PRESET_CONFIGS = {
         "rvol": 0.80,
         "min_atr": 0.75,
         "rationale": "
-        
