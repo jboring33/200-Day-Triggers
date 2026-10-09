@@ -122,18 +122,18 @@ def get_bollinger(close, price):
 def get_logic_result(price, u_th, l_th, slope, adx, rsi, stoch, obv_s, is_sq, ema20, sma50, rvol_ok, rvol, buf):
     if price > u_th and slope in ["UP", "FLAT"]:
         if adx < 20:
-            return "⚪ Consolidating", "NO TREND", f"ADX ({adx:.1f}) < 20 indicates weak trend strength."
+            return "⚪ Consolidating", "CHOP / LOW ADX", f"Above 200 EMA, but ADX ({adx:.1f}) < 20 signals choppy consolidation. Wait for trend strength expansion."
         if rsi > 70 or stoch > 80:
-            return "🟡 Overbought", "HOLD", f"Macro UP, but RSI ({rsi:.1f}) / Stoch ({stoch:.1f}) stretched."
+            return "🟡 Overbought", "HOLD", f"Macro UP, but short-term RSI ({rsi:.1f}) / Stoch ({stoch:.1f}) extended. Hold existing position, avoid new entry."
         if obv_s < 0 and rsi < 50:
-            return "🔴 Divergence", "WARNING", "Negative OBV outflow signals distribution."
+            return "🔴 Divergence", "WARNING", "Negative OBV volume outflow signals distribution."
         if is_sq:
             return "🟡 Squeeze", "WATCH", "Bollinger Band Squeeze active—prepare for breakout expansion."
         if price > ema20 and price > sma50 and rvol_ok:
             return "🟢 Bullish", "ACCUMULATE", f"Confirmed entry: Macro UP + Short MAs aligned + RVOL ({rvol:.2f}x)."
         if price <= ema20 or price <= sma50:
-            return "🟡 Pullback", "WAIT", "Macro UP, but price is pulling back below 20 EMA / 50 SMA."
-        return "🟡 Warning", "LOW VOLUME", f"Price above buffer, but RVOL ({rvol:.2f}x) lacks confirmation."
+            return "🟡 Pullback", "WAIT", "Macro UP, but price is pulling back below 20 EMA / 50 SMA. Wait for short-term bounce."
+        return "🟡 Warning", "LOW VOLUME", f"Price above buffer, but short-term RVOL ({rvol:.2f}x) lacks volume confirmation."
 
     if price < l_th and slope == "DOWN":
         if adx < 20:
@@ -214,7 +214,7 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
             pct_ema200 = ((price - p_ema200) / p_ema200) * 100.0
             ma_alignment = "ABOVE 20 & 50" if (price > ema20 and price > sma50) else "BELOW SHORT MAs"
 
-            # 1. Macro Trend Table (Weeks to Months)
+            # Table 1: Macro Trend Regime (Weeks to Months)
             macro_results.append({
                 "Ticker": t,
                 "Price": round(price, 2),
@@ -226,139 +226,4 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
                 "Noise Buffer": f"±{eff_buf*100:.1f}%",
             })
 
-            # 2. Short-Term Execution & Triggers Table (Days to Weeks)
-            execution_results.append({
-                "Ticker": t,
-                "Action Signal": signal,
-                "Short MAs": ma_alignment,
-                "RVOL": round(rvol, 2),
-                "Vol State": vol_status,
-                "RSI (14)": round(rsi, 1),
-                "Stoch %K": round(stoch, 1),
-                "OBV Flow": obv_label,
-                "Bollinger State": bb_text,
-                "ATR (%)": round(atr_pct, 2),
-                "Execution Rationale": msg,
-            })
-        except Exception as e:
-            st.error(f"Error processing {t}: {str(e)}")
-
-    return pd.DataFrame(macro_results), pd.DataFrame(execution_results)
-
-# --- UI Layout ---
-
-st.title("📈 " + REPO_NAME)
-st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-
-with st.expander("📖 **Methodology Guide: Status vs. Signal & Preset Calibration**"):
-    st.markdown("""
-    ### **1. Long-Term Macro Trend Table (Weeks–Months)**
-    Defines the structural regime relative to the 200 EMA buffer:
-    * 🟢 **Bullish:** Price above upper noise buffer with an upward or flat 200 EMA trajectory.
-    * 🔴 **Bearish:** Price below lower noise buffer with a downward 200 EMA trajectory.
-    * ⚪ **Neutral / Consolidating:** Price inside buffer or ADX < 20 (lacks trend strength).
-    * 🟡 **Overbought / Squeeze / Pullback:** Structural trend intact, short-term extension present.
-
-    ---
-
-    ### **2. Short-Term Execution & Triggers Table (Days–Weeks)**
-    Provides precise entry/exit timing based on short-term indicators:
-    * **ACCUMULATE:** High conviction entry—Macro Bullish + Price above 20/50 MAs + Volume confirmed (`RVOL >= threshold`).
-    * **HOLD:** Position active—Macro Bullish, but short-term momentum (RSI/Stoch) is extended.
-    * **WAIT:** Macro Bullish, but price is pulling back below short-term moving averages (20 EMA / 50 SMA).
-    * **WATCH:** Active Bollinger Squeeze—volatility compression preceding a potential breakout.
-    * **SELL / WARNING:** Breakdown below lower 200 EMA buffer or negative OBV divergence.
-
-    ---
-
-    ### **3. Preset Parameter Rationale**
-    """)
-
-    p_data = [
-        {
-            "Preset Name": f"**{name}**",
-            "Buffer (%)": f"{cfg['buffer']:.1f}%",
-            "Min RVOL": f"{cfg['rvol']:.2f}x",
-            "Min ATR (%)": f"{cfg['min_atr']:.2f}%",
-            "Calibration Rationale": cfg["rationale"],
-        }
-        for name, cfg in PRESET_CONFIGS.items()
-    ]
-    st.table(pd.DataFrame(p_data))
-
-st.sidebar.header("Screener Configuration")
-
-url_params = st.query_params
-init_preset = url_params.get("preset", "Broad Market")
-if init_preset not in PRESET_CONFIGS:
-    init_preset = "Broad Market"
-
-def on_preset_change():
-    sel = st.session_state["preset_select"]
-    st.session_state["ticker_text"] = PRESET_CONFIGS[sel]["tickers"]
-    st.query_params["preset"] = sel
-    st.query_params["tickers"] = st.session_state["ticker_text"]
-
-def on_ticker_change():
-    st.query_params["preset"] = st.session_state["preset_select"]
-    st.query_params["tickers"] = st.session_state["ticker_text"]
-
-if "preset_select" not in st.session_state:
-    st.session_state["preset_select"] = init_preset
-
-if "ticker_text" not in st.session_state:
-    st.session_state["ticker_text"] = url_params.get(
-        "tickers", PRESET_CONFIGS[init_preset]["tickers"]
-    )
-
-run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_container_width=True)
-st.sidebar.divider()
-
-selected_preset = st.sidebar.selectbox(
-    "Target Instance Preset:",
-    options=list(PRESET_CONFIGS.keys()),
-    key="preset_select",
-    on_change=on_preset_change,
-)
-
-active_defaults = PRESET_CONFIGS[selected_preset]
-
-ticker_input = st.sidebar.text_area(
-    "Watchlist Tickers (Editable):",
-    key="ticker_text",
-    on_change=on_ticker_change,
-    help="Edit tickers freely. Updates refresh browser URL for bookmarking.",
-)
-
-buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
-rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
-min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
-
-if run_screener:
-    tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
-    if tickers_list:
-        with st.spinner("Analyzing market data..."):
-            df_macro, df_exec = analyze_tickers(
-                tickers_list,
-                default_buffer_pct=buffer_setting / 100.0,
-                rvol_threshold=rvol_setting,
-            )
-        if not df_macro.empty:
-            st.subheader("🌐 1. Macro Trend Regime (Weeks to Months)")
-            st.dataframe(df_macro, use_container_width=True, hide_index=True)
-
-            st.divider()
-
-            st.subheader("⚡ 2. Short-Term Execution & Triggers (Days to Weeks)")
-            st.dataframe(df_exec, use_container_width=True, hide_index=True)
-
-            st.divider()
-            # Combine both for full CSV export
-            full_df = pd.merge(df_macro, df_exec, on="Ticker")
-            csv_data = full_df.to_csv(index=False)
-            st.download_button(
-                "📥 Download Full Matrix CSV",
-                csv_data,
-                "200_day_triggers_full.csv",
-                "text/csv",
-            )
+            # Table 2: Short-
