@@ -6,22 +6,6 @@ import yfinance as yf
 
 st.set_page_config(page_title="200 Day Triggers", page_icon="📈", layout="wide")
 
-# Robust CSS to force the Streamlit/BaseWeb selectbox popover dropdown to expand
-st.markdown(
-    """
-    <style>
-    div[data-baseweb="popover"] {
-        max-height: 500px !important;
-    }
-    div[data-baseweb="menu"] {
-        max-height: 480px !important;
-        overflow-y: auto !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
 REPO_NAME = "200 Day Triggers"
 
 PRESET_CONFIGS = {
@@ -309,17 +293,17 @@ if init_preset not in PRESET_CONFIGS:
     init_preset = "Watching"
 
 def on_preset_change():
-    sel = st.session_state["preset_select"]
+    sel = st.session_state["preset_radio"]
     st.session_state["ticker_text"] = PRESET_CONFIGS[sel]["tickers"]
     st.query_params["preset"] = sel
     st.query_params["tickers"] = st.session_state["ticker_text"]
 
 def on_ticker_change():
-    st.query_params["preset"] = st.session_state["preset_select"]
+    st.query_params["preset"] = st.session_state["preset_radio"]
     st.query_params["tickers"] = st.session_state["ticker_text"]
 
-if "preset_select" not in st.session_state or st.session_state["preset_select"] not in PRESET_CONFIGS:
-    st.session_state["preset_select"] = init_preset
+if "preset_radio" not in st.session_state or st.session_state["preset_radio"] not in PRESET_CONFIGS:
+    st.session_state["preset_radio"] = init_preset
 
 if "ticker_text" not in st.session_state:
     st.session_state["ticker_text"] = url_params.get(
@@ -329,10 +313,11 @@ if "ticker_text" not in st.session_state:
 run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_container_width=True)
 st.sidebar.divider()
 
-selected_preset = st.sidebar.selectbox(
+# Using radio buttons instead of selectbox so all 8 presets display fully without collapsing
+selected_preset = st.sidebar.radio(
     "Target Instance Preset:",
     options=list(PRESET_CONFIGS.keys()),
-    key="preset_select",
+    key="preset_radio",
     on_change=on_preset_change,
 )
 
