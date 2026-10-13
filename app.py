@@ -6,12 +6,16 @@ import yfinance as yf
 
 st.set_page_config(page_title="200 Day Triggers", page_icon="📈", layout="wide")
 
-# Expand selectbox dropdown menu height so all 8 presets fit without scrolling
+# Robust CSS to force the Streamlit/BaseWeb selectbox popover dropdown to expand
 st.markdown(
     """
     <style>
-    div[data-baseweb="popover"] div[role="listbox"] {
-        max-height: 400px !important;
+    div[data-baseweb="popover"] {
+        max-height: 500px !important;
+    }
+    div[data-baseweb="menu"] {
+        max-height: 480px !important;
+        overflow-y: auto !important;
     }
     </style>
     """,
