@@ -208,4 +208,33 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
 
             status, signal, msg = get_logic_result(
                 price, u_th, l_th, slope, adx, rsi, stoch,
-                obv_s, is_sq, ema20, sma50
+                obv_s, is_sq, ema20, sma50, rvol_ok, rvol, eff_buf
+            )
+
+            pct_ema200 = ((price - p_ema200) / p_ema200) * 100.0
+            ma_alignment = "ABOVE 20 & 50" if (price > ema20 and price > sma50) else "BELOW SHORT MAs"
+
+            macro_results.append({
+                "Ticker": t,
+                "Price": round(price, 2),
+                "Macro Status": status,
+                "200 EMA": round(p_ema200, 2),
+                "% vs 200 EMA": f"{pct_ema200:+.2f}%",
+                "200 EMA Slope": slope,
+                "ADX Strength": round(adx, 1),
+                "Noise Buffer": f"±{eff_buf*100:.1f}%",
+            })
+
+            execution_results.append({
+                "Ticker": t,
+                "Action Signal": signal,
+                "Short MAs": ma_alignment,
+                "RVOL": round(rvol, 2),
+                "Vol State": vol_status,
+                "RSI (14)": round(rsi, 1),
+                "Stoch %K": round(stoch, 1),
+                "OBV Flow": obv_label,
+                "Bollinger State": bb_text,
+                "ATR (%)": round(atr_pct, 2),
+                "Execution Rationale": msg,
+            })
