@@ -9,6 +9,13 @@ st.set_page_config(page_title="200 Day Triggers", page_icon="📈", layout="wide
 REPO_NAME = "200 Day Triggers"
 
 PRESET_CONFIGS = {
+    "Watching": {
+        "tickers": "SPY, QQQ, NVDA, EMXC, VGT",
+        "buffer": 2.0,
+        "rvol": 1.00,
+        "min_atr": 0.00,
+        "rationale": "Neutral baseline settings for active watchlist monitoring. Standard 2.0% buffer, 1.00 RVOL threshold, and no minimum ATR restriction.",
+    },
     "Broad Market": {
         "tickers": "SPY, QQQ, DJIA, EMXC, VEA",
         "buffer": 2.0,
@@ -57,13 +64,6 @@ PRESET_CONFIGS = {
         "rvol": 1.25,
         "min_atr": 2.00,
         "rationale": "Crypto and commodities experience high volatility. 4.0% buffer prevents premature triggers, RVOL 1.25 demands heavy volume, 2.00% ATR filters chop.",
-    },
-    "Watching": {
-        "tickers": "SPY, QQQ, NVDA, EMXC, VGT",
-        "buffer": 2.0,
-        "rvol": 1.00,
-        "min_atr": 0.00,
-        "rationale": "Neutral baseline settings for active watchlist monitoring. Standard 2.0% buffer, 1.00 RVOL threshold, and no minimum ATR restriction.",
     },
 }
 
