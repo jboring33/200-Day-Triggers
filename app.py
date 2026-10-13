@@ -214,7 +214,6 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
             pct_ema200 = ((price - p_ema200) / p_ema200) * 100.0
             ma_alignment = "ABOVE 20 & 50" if (price > ema20 and price > sma50) else "BELOW SHORT MAs"
 
-            # Table 1: Macro Trend Regime (Weeks to Months)
             macro_results.append({
                 "Ticker": t,
                 "Price": round(price, 2),
@@ -226,7 +225,6 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
                 "Noise Buffer": f"±{eff_buf*100:.1f}%",
             })
 
-            # Table 2: Short-Term Execution & Triggers (Days to Weeks)
             execution_results.append({
                 "Ticker": t,
                 "Action Signal": signal,
@@ -290,8 +288,8 @@ with st.expander("📖 **Methodology Guide: Status vs. Signal & Preset Calibrati
 st.sidebar.header("Screener Configuration")
 
 url_params = st.query_params
-init_preset = url_params.get("preset", "Broad Market")
-if init_preset == "Custom" or init_preset not in PRESET_CONFIGS:
+init_preset = url_params.get("preset", "Watching")
+if init_preset not in PRESET_CONFIGS:
     init_preset = "Watching"
 
 def on_preset_change():
@@ -304,7 +302,7 @@ def on_ticker_change():
     st.query_params["preset"] = st.session_state["preset_select"]
     st.query_params["tickers"] = st.session_state["ticker_text"]
 
-if "preset_select" not in st.session_state or st.session_state.get("preset_select") == "Custom":
+if "preset_select" not in st.session_state or st.session_state["preset_select"] not in PRESET_CONFIGS:
     st.session_state["preset_select"] = init_preset
 
 if "ticker_text" not in st.session_state:
@@ -362,4 +360,3 @@ if run_screener:
                 "200_day_triggers_full.csv",
                 "text/csv",
             )
-            
