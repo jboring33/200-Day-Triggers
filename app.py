@@ -193,4 +193,64 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
             u_th = p_ema200 * (1.0 + eff_buf)
             l_th = p_ema200 * (1.0 - eff_buf)
 
-            rsi = get
+            rsi = get_rsi(c)
+            adx = get_adx(df_clean)
+            stoch = get_stoch(df_clean)
+
+            dir_s = np.sign(c.diff()).fillna(0)
+            obv_s = float((dir_s * v).cumsum().diff(10).iloc[-1])
+            obv_label = "INFLOW" if obv_s > 0 else "OUTFLOW"
+
+            bb_text, is_sq = get_bollinger(c, price)
+
+            ema_diff = ((p_ema200 - prev_ema200) / prev_ema200) * 100
+            slope = "UP" if ema_diff > 0.05 else ("DOWN" if ema_diff < -0.05 else "FLAT")
+
+            status, signal, msg = get_logic_result(
+                price, u_th, l_th, slope, adx, rsi, stoch,
+                obv_s, is_sq, ema20, sma50, rvol_ok, rvol, eff_buf
+            )
+
+            pct_ema200 = ((price - p_ema200) / p_ema200) * 100.0
+            ma_alignment = "ABOVE 20 & 50" if (price > ema20 and price > sma50) else "BELOW SHORT MAs"
+
+            macro_results.append({
+                "Ticker": t,
+                "Price": round(price, 2),
+                "Macro Status": status,
+                "200 EMA": round(p_ema200, 2),
+                "% vs 200 EMA": f"{pct_ema200:+.2f}%",
+                "200 EMA Slope": slope,
+                "ADX Strength": round(adx, 1),
+                "Noise Buffer": f"±{eff_buf*100:.1f}%",
+            })
+
+            execution_results.append({
+                "Ticker": t,
+                "Action Signal": signal,
+                "Short MAs": ma_alignment,
+                "RVOL": round(rvol, 2),
+                "Vol State": vol_status,
+                "RSI (14)": round(rsi, 1),
+                "Stoch %K": round(stoch, 1),
+                "OBV Flow": obv_label,
+                "Bollinger State": bb_text,
+                "ATR (%)": round(atr_pct, 2),
+                "Execution Rationale": msg,
+            })
+        except Exception as e:
+            st.error(f"Error processing {t}: {str(e)}")
+
+    return pd.DataFrame(macro_results), pd.DataFrame(execution_results)
+
+# --- UI Layout ---
+
+st.title("📈 " + REPO_NAME)
+st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+with st.expander("📖 **Methodology Guide: Status vs. Signal & Preset Calibration**"):
+    st.markdown("""
+    ### **1. Long-Term Macro Trend Table (Weeks–Months)**
+    Defines the structural regime relative to the 200 EMA noise buffer:
+    * 🟢 **Bullish:** Price above upper noise buffer with an upward or flat 200 EMA trajectory.
+    * 🔴 **Bearish:** Price below lower noise buffer with a
