@@ -291,8 +291,8 @@ st.sidebar.header("Screener Configuration")
 
 url_params = st.query_params
 init_preset = url_params.get("preset", "Broad Market")
-if init_preset not in PRESET_CONFIGS:
-    init_preset = "Broad Market"
+if init_preset == "Custom" or init_preset not in PRESET_CONFIGS:
+    init_preset = "Watching"
 
 def on_preset_change():
     sel = st.session_state["preset_select"]
@@ -304,7 +304,7 @@ def on_ticker_change():
     st.query_params["preset"] = st.session_state["preset_select"]
     st.query_params["tickers"] = st.session_state["ticker_text"]
 
-if "preset_select" not in st.session_state:
+if "preset_select" not in st.session_state or st.session_state.get("preset_select") == "Custom":
     st.session_state["preset_select"] = init_preset
 
 if "ticker_text" not in st.session_state:
@@ -362,3 +362,4 @@ if run_screener:
                 "200_day_triggers_full.csv",
                 "text/csv",
             )
+            
