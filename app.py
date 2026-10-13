@@ -6,6 +6,18 @@ import yfinance as yf
 
 st.set_page_config(page_title="200 Day Triggers", page_icon="📈", layout="wide")
 
+# Expand selectbox dropdown menu height so all 8 presets fit without scrolling
+st.markdown(
+    """
+    <style>
+    div[data-baseweb="popover"] div[role="listbox"] {
+        max-height: 400px !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 REPO_NAME = "200 Day Triggers"
 
 PRESET_CONFIGS = {
