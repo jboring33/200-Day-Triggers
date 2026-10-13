@@ -249,8 +249,109 @@ st.title("📈 " + REPO_NAME)
 st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 with st.expander("📖 **Methodology Guide: Status vs. Signal & Preset Calibration**"):
-    st.markdown("""
-    ### **1. Long-Term Macro Trend Table (Weeks–Months)**
-    Defines the structural regime relative to the 200 EMA noise buffer:
-    * 🟢 **Bullish:** Price above upper noise buffer with an upward or flat 200 EMA trajectory.
-    * 🔴 **Bearish:** Price below lower noise buffer with a
+    st.markdown("### **1. Long-Term Macro Trend Table (Weeks–Months)**")
+    st.markdown("Defines the structural regime relative to the 200 EMA noise buffer:")
+    st.markdown("* 🟢 **Bullish:** Price above upper noise buffer with an upward or flat 200 EMA trajectory.")
+    st.markdown("* 🔴 **Bearish:** Price below lower noise buffer with a downward 200 EMA trajectory.")
+    st.markdown("* ⚪ **Neutral / Consolidating:** Price inside buffer or ADX < 20 (lacks trend strength).")
+    st.markdown("* 🟡 **Overbought / Squeeze / Pullback:** Structural trend intact, short-term extension present.")
+
+    st.markdown("---")
+    st.markdown("### **2. Short-Term Execution & Triggers Table (Days–Weeks)**")
+    st.markdown("Provides precise entry/exit timing based on short-term indicators:")
+    st.markdown("* **ACCUMULATE:** High conviction entry—Macro Bullish + Price above 20/50 MAs + Volume confirmed (`RVOL >= threshold`).")
+    st.markdown("* **HOLD:** Position active—Macro Bullish, but short-term momentum (RSI/Stoch) is extended.")
+    st.markdown("* **WAIT:** Macro Bullish, but price is pulling back below short-term moving averages (20 EMA / 50 SMA), or ADX < 20 indicating low momentum consolidation.")
+    st.markdown("* **WATCH:** Active Bollinger Squeeze—volatility compression preceding a potential breakout.")
+    st.markdown("* **SELL / WARNING:** Breakdown below lower 200 EMA buffer or negative OBV divergence.")
+
+    st.markdown("---")
+    st.markdown("### **3. Preset Parameter Rationale**")
+
+    p_data = [
+        {
+            "Preset Name": f"**{name}**",
+            "Buffer (%)": f"{cfg['buffer']:.1f}%",
+            "Min RVOL": f"{cfg['rvol']:.2f}x",
+            "Min ATR (%)": f"{cfg['min_atr']:.2f}%",
+            "Calibration Rationale": cfg["rationale"],
+        }
+        for name, cfg in PRESET_CONFIGS.items()
+    ]
+    st.table(pd.DataFrame(p_data))
+
+st.sidebar.header("Screener Configuration")
+
+url_params = st.query_params
+init_preset = url_params.get("preset", "Watching")
+if init_preset not in PRESET_CONFIGS:
+    init_preset = "Watching"
+
+def on_preset_change():
+    sel = st.session_state["preset_radio"]
+    st.session_state["ticker_text"] = PRESET_CONFIGS[sel]["tickers"]
+    st.query_params["preset"] = sel
+    st.query_params["tickers"] = st.session_state["ticker_text"]
+
+def on_ticker_change():
+    st.query_params["preset"] = st.session_state["preset_radio"]
+    st.query_params["tickers"] = st.session_state["ticker_text"]
+
+if "preset_radio" not in st.session_state or st.session_state["preset_radio"] not in PRESET_CONFIGS:
+    st.session_state["preset_radio"] = init_preset
+
+if "ticker_text" not in st.session_state:
+    st.session_state["ticker_text"] = url_params.get(
+        "tickers", PRESET_CONFIGS[init_preset]["tickers"]
+    )
+
+run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_container_width=True)
+st.sidebar.divider()
+
+selected_preset = st.sidebar.radio(
+    "Target Instance Preset:",
+    options=list(PRESET_CONFIGS.keys()),
+    key="preset_radio",
+    on_change=on_preset_change,
+)
+
+active_defaults = PRESET_CONFIGS[selected_preset]
+
+ticker_input = st.sidebar.text_area(
+    "Watchlist Tickers (Editable):",
+    key="ticker_text",
+    on_change=on_ticker_change,
+    help="Edit tickers freely. Updates refresh browser URL for bookmarking.",
+)
+
+buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
+rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
+min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
+
+if run_screener:
+    tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
+    if tickers_list:
+        with st.spinner("Analyzing market data..."):
+            df_macro, df_exec = analyze_tickers(
+                tickers_list,
+                default_buffer_pct=buffer_setting / 100.0,
+                rvol_threshold=rvol_setting,
+            )
+        if not df_macro.empty:
+            st.subheader("🌐 1. Macro Trend Regime (Weeks to Months)")
+            st.dataframe(df_macro, use_container_width=True, hide_index=True)
+
+            st.divider()
+
+            st.subheader("⚡ 2. Short-Term Execution & Triggers (Days to Weeks)")
+            st.dataframe(df_exec, use_container_width=True, hide_index=True)
+
+            st.divider()
+            full_df = pd.merge(df_macro, df_exec, on="Ticker")
+            csv_data = full_df.to_csv(index=False)
+            st.download_button(
+                "📥 Download Full Matrix CSV",
+                csv_data,
+                "200_day_triggers_full.csv",
+                "text/csv",
+            )
