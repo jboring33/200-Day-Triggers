@@ -174,3 +174,23 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
 
             is_green = price >= open_p
             if rvol >= 1.25 and is_green:
+                vol_status = "BULLISH (HEAVY BUY)"
+            elif rvol >= 1.25 and not is_green:
+                vol_status = "BEARISH (HEAVY SELL)"
+            else:
+                vol_status = "NORMAL / MODERATE"
+
+            ema20 = float(c.ewm(span=20, adjust=False).mean().iloc[-1])
+            sma50 = float(c.rolling(50).mean().iloc[-1])
+            ema200 = c.ewm(span=200, adjust=False).mean()
+            p_ema200 = float(ema200.iloc[-1])
+            prev_ema200 = float(ema200.iloc[-6])
+
+            atr = get_atr(df_clean)
+            atr_pct = (atr / price) * 100
+            eff_buf = max(default_buffer_pct, (atr / price) * 1.5)
+
+            u_th = p_ema200 * (1.0 + eff_buf)
+            l_th = p_ema200 * (1.0 - eff_buf)
+
+            rsi = get
