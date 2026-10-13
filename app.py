@@ -253,7 +253,7 @@ with st.expander("📖 **Methodology Guide: Status vs. Signal & Preset Calibrati
     st.markdown("Defines the structural regime relative to the 200 EMA noise buffer:")
     st.markdown("* 🟢 **Bullish:** Price above upper noise buffer with an upward or flat 200 EMA trajectory.")
     st.markdown("* 🔴 **Bearish:** Price below lower noise buffer with a downward 200 EMA trajectory.")
-    st.markdown("* ⚪ **Neutral / Consolidating:** Price inside buffer or ADX < 20 (lacks trend strength).")
+    st.markdown("* ⚪ **Neutral / Buffer Zone:** Price hovering inside the noise buffer band around the 200 EMA. Lacks clear directional conviction.")
     st.markdown("* 🟡 **Overbought / Squeeze / Pullback:** Structural trend intact, short-term extension present.")
 
     st.markdown("---")
@@ -263,6 +263,7 @@ with st.expander("📖 **Methodology Guide: Status vs. Signal & Preset Calibrati
     st.markdown("* **HOLD:** Position active—Macro Bullish, but short-term momentum (RSI/Stoch) is extended.")
     st.markdown("* **WAIT:** Macro Bullish, but price is pulling back below short-term moving averages (20 EMA / 50 SMA), or ADX < 20 indicating low momentum consolidation.")
     st.markdown("* **WATCH:** Active Bollinger Squeeze—volatility compression preceding a potential breakout.")
+    st.markdown("* **BUFFER ZONE (Actionable Matrix):** Price lacks directional conviction inside the noise band. **New Money:** Wait for an ACCUMULATE breakout; do not enter. **Existing Positions:** Hold through minor noise, but monitor the lower buffer boundary for a breakdown.")
     st.markdown("* **SELL / WARNING:** Breakdown below lower 200 EMA buffer or negative OBV divergence.")
 
     st.markdown("---")
