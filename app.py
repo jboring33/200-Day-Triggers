@@ -55,7 +55,7 @@ ASSET_DESCRIPTIONS = {
     "IAUM": "iShares Gold Trust Micro",
     "GLD": "SPDR Gold Shares",
     "SLV": "iShares Silver Trust",
-    # Expanded Discovery Universe Descriptions
+    # Recommendation & Discovery Universe Descriptions
     "IWM": "iShares Russell 2000 ETF",
     "VWO": "Vanguard FTSE Emerging Markets ETF",
     "EFA": "iShares MSCI EAFE ETF",
@@ -86,7 +86,14 @@ PRESET_CONFIGS = {
         "buffer": 2.0,
         "rvol": 1.00,
         "min_atr": 0.00,
-        "rationale": "Neutral baseline settings for active watchlist monitoring. Standard 2.0% buffer, 1.00 RVOL threshold, and no minimum ATR restriction.",
+        "rationale": "Your personal active watchlist for monitoring core holdings and custom setups.",
+    },
+    "Recommendations": {
+        "tickers": "SMH, IWF, MTUM, QUAL, IGV, ITA, XHB, XOP, IWM, DGRO",
+        "buffer": 2.0,
+        "rvol": 1.00,
+        "min_atr": 0.00,
+        "rationale": "Curated pool of top institutional buy candidates and factor/sector leaders, scannable for fresh deployment.",
     },
     "Broad Market": {
         "tickers": "SPY, QQQ, DJIA, EMXC, VEA",
@@ -139,7 +146,6 @@ PRESET_CONFIGS = {
     },
 }
 
-# Pool of candidate ETFs for discovery
 DISCOVERY_UNIVERSE = [
     "IWM", "VWO", "EFA", "IWF", "IWD", "DGRO", "NOBL", "QUAL", "MTUM", 
     "SMH", "XSD", "IGV", "ITA", "XHB", "XME", "XOP", "KRE", "HYG", 
@@ -154,7 +160,7 @@ def load_persistent_state():
             with open(STATE_FILE, "r") as f:
                 data = json.load(f)
                 for name, cfg in PRESET_CONFIGS.items():
-                    if name not in data:
+                    if name not in data or not data[name].strip():
                         data[name] = cfg["tickers"]
                 return data
         except Exception:
@@ -193,13 +199,11 @@ def discover_top_candidates(existing_tickers, top_n=10):
             slope = "UP" if sma_diff > 0.05 else ("DOWN" if sma_diff < -0.05 else "FLAT")
             pct_above = ((price - p_sma200) / p_sma200) * 100.0
             
-            # Filter for confirmed bull trend with rising 200 SMA slope
             if price > p_sma200 and slope == "UP":
                 scored.append((t, pct_above))
         except Exception:
             continue
     
-    # Sort by strongest % above 200 SMA
     scored.sort(key=lambda x: x[1], reverse=True)
     return [item[0] for item in scored[:top_n]]
 
@@ -230,7 +234,7 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
 
             sma200 = c.rolling(200).mean()
             p_sma200 = float(sma200.iloc[-1])
-            prev_sma200 = float(sma200.iloc[-21]) # 1-month (21 trading day) smoothed slope lookback
+            prev_sma200 = float(sma200.iloc[-21])
 
             atr = get_atr(df_clean)
             atr_pct = (atr / price) * 100
@@ -335,9 +339,8 @@ ticker_input = st.sidebar.text_area(
     help="Edit tickers freely. Edits are saved to server disk and survive app sleep cycles.",
 )
 
-# --- Discovery Tool Button (Active when Watching Preset is Selected) ---
-if selected_preset == "Watching":
-    if st.sidebar.button("🔍 Scan & Add Top 10 Buy Candidates"):
+if selected_preset == "Recommendations":
+    if st.sidebar.button("🔍 Scan & Refresh Recommendations"):
         with st.spinner("Scanning global ETF universe for top bull-market candidates..."):
             all_current = set()
             for t_str in st.session_state["preset_tickers"].values():
@@ -345,12 +348,10 @@ if selected_preset == "Watching":
             
             new_picks = discover_top_candidates(all_current, top_n=10)
             if new_picks:
-                current_watching = [t.strip().upper() for t in st.session_state["preset_tickers"]["Watching"].split(",") if t.strip()]
-                updated_watching = list(dict.fromkeys(current_watching + new_picks))
-                st.session_state["preset_tickers"]["Watching"] = ", ".join(updated_watching)
-                st.session_state["ticker_text"] = st.session_state["preset_tickers"]["Watching"]
+                st.session_state["preset_tickers"]["Recommendations"] = ", ".join(new_picks)
+                st.session_state["ticker_text"] = st.session_state["preset_tickers"]["Recommendations"]
                 save_persistent_state(st.session_state["preset_tickers"])
-                st.sidebar.success(f"Added {len(new_picks)} top candidates to Watching!")
+                st.sidebar.success("Recommendations updated with top 10 current candidates!")
                 st.rerun()
             else:
                 st.sidebar.warning("No new qualifying candidates found.")
