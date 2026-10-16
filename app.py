@@ -119,33 +119,33 @@ def get_bollinger(close, price):
         return f"LOWER BAND (${l_bb:.2f})", False
     return f"NORMAL ({bw_c:.1f}%)", False
 
-def get_logic_result(price, u_th, l_th, slope, adx, rsi, stoch, obv_s, is_sq, ema20, sma50, rvol_ok, rvol, buf):
+def get_logic_result(price, u_th, l_th, slope, adx, rsi, stoch, obv_s, is_sq, sma20, sma50, rvol_ok, rvol, buf):
     if price > u_th and slope in ["UP", "FLAT"]:
         if adx < 20:
-            return "⚪ Consolidating", "WAIT", f"Above 200 EMA, but ADX ({adx:.1f}) < 20 signals choppy consolidation. Wait for trend strength expansion."
+            return "⚪ Consolidating", "WAIT", f"Above 200 SMA, but ADX ({adx:.1f}) < 20 signals choppy consolidation. Wait for trend strength expansion."
         if rsi > 70 or stoch > 80:
             return "🟡 Overbought", "HOLD", f"Macro UP, but short-term RSI ({rsi:.1f}) / Stoch ({stoch:.1f}) extended. Hold existing position, avoid new entry."
         if obv_s < 0 and rsi < 50:
             return "🔴 Divergence", "WARNING", "Negative OBV volume outflow signals distribution."
         if is_sq:
             return "🟡 Squeeze", "WATCH", "Bollinger Band Squeeze active—prepare for breakout expansion."
-        if price > ema20 and price > sma50 and rvol_ok:
+        if price > sma20 and price > sma50 and rvol_ok:
             return "🟢 Bullish", "ACCUMULATE", f"Confirmed entry: Macro UP + Short MAs aligned + RVOL ({rvol:.2f}x)."
-        if price <= ema20 or price <= sma50:
-            return "🟡 Pullback", "WAIT", "Macro UP, but price is pulling back below 20 EMA / 50 SMA. Wait for short-term bounce."
+        if price <= sma20 or price <= sma50:
+            return "🟡 Pullback", "WAIT", "Macro UP, but price is pulling back below 20 SMA / 50 SMA. Wait for short-term bounce."
         return "🟡 Warning", "LOW VOLUME", f"Price above buffer, but short-term RVOL ({rvol:.2f}x) lacks volume confirmation."
 
     if price < l_th and slope == "DOWN":
         if adx < 20:
-            return "⚪ Consolidating", "WEAK BEAR", f"Below 200 EMA, but weak ADX ({adx:.1f})."
+            return "⚪ Consolidating", "WEAK BEAR", f"Below 200 SMA, but weak ADX ({adx:.1f})."
         if rvol_ok:
             return "🔴 Bearish", "SELL", f"Selling volume confirmed below buffer (RVOL: {rvol:.2f}x)."
         return "🔴 Bearish", "SELL LOW VOL", f"Below buffer with DOWN slope (RVOL: {rvol:.2f}x)."
 
     if l_th <= price <= u_th:
-        return "⚪ Neutral", "BUFFER ZONE", f"Price within +/-{buf*100:.1f}% noise buffer of 200 EMA."
+        return "⚪ Neutral", "BUFFER ZONE", f"Price within +/-{buf*100:.1f}% noise buffer of 200 SMA."
 
-    return "🟡 Warning", "CAUTION", f"Crossed 200 EMA but slope ({slope}) unconfirmed."
+    return "🟡 Warning", "CAUTION", f"Crossed 200 SMA but slope ({slope}) unconfirmed."
 
 def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
     macro_results = []
@@ -180,18 +180,18 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
             else:
                 vol_status = "NORMAL / MODERATE"
 
-            ema20 = float(c.ewm(span=20, adjust=False).mean().iloc[-1])
+            sma20 = float(c.rolling(20).mean().iloc[-1])
             sma50 = float(c.rolling(50).mean().iloc[-1])
-            ema200 = c.ewm(span=200, adjust=False).mean()
-            p_ema200 = float(ema200.iloc[-1])
-            prev_ema200 = float(ema200.iloc[-6])
+            sma200 = c.rolling(200).mean()
+            p_sma200 = float(sma200.iloc[-1])
+            prev_sma200 = float(sma200.iloc[-6])
 
             atr = get_atr(df_clean)
             atr_pct = (atr / price) * 100
             eff_buf = max(default_buffer_pct, (atr / price) * 1.5)
 
-            u_th = p_ema200 * (1.0 + eff_buf)
-            l_th = p_ema200 * (1.0 - eff_buf)
+            u_th = p_sma200 * (1.0 + eff_buf)
+            l_th = p_sma200 * (1.0 - eff_buf)
 
             rsi = get_rsi(c)
             adx = get_adx(df_clean)
@@ -203,24 +203,24 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
 
             bb_text, is_sq = get_bollinger(c, price)
 
-            ema_diff = ((p_ema200 - prev_ema200) / prev_ema200) * 100
-            slope = "UP" if ema_diff > 0.05 else ("DOWN" if ema_diff < -0.05 else "FLAT")
+            sma_diff = ((p_sma200 - prev_sma200) / prev_sma200) * 100
+            slope = "UP" if sma_diff > 0.05 else ("DOWN" if sma_diff < -0.05 else "FLAT")
 
             status, signal, msg = get_logic_result(
                 price, u_th, l_th, slope, adx, rsi, stoch,
-                obv_s, is_sq, ema20, sma50, rvol_ok, rvol, eff_buf
+                obv_s, is_sq, sma20, sma50, rvol_ok, rvol, eff_buf
             )
 
-            pct_ema200 = ((price - p_ema200) / p_ema200) * 100.0
-            ma_alignment = "ABOVE 20 & 50" if (price > ema20 and price > sma50) else "BELOW SHORT MAs"
+            pct_sma200 = ((price - p_sma200) / p_sma200) * 100.0
+            ma_alignment = "ABOVE 20 & 50" if (price > sma20 and price > sma50) else "BELOW SHORT MAs"
 
             macro_results.append({
                 "Ticker": t,
                 "Price": round(price, 2),
                 "Macro Status": status,
-                "200 EMA": round(p_ema200, 2),
-                "% vs 200 EMA": f"{pct_ema200:+.2f}%",
-                "200 EMA Slope": slope,
+                "200 SMA": round(p_sma200, 2),
+                "% vs 200 SMA": f"{pct_sma200:+.2f}%",
+                "200 SMA Slope": slope,
                 "ADX Strength": round(adx, 1),
                 "Noise Buffer": f"±{eff_buf*100:.1f}%",
             })
@@ -250,10 +250,10 @@ st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 with st.expander("📖 **Methodology Guide: Status vs. Signal & Preset Calibration**"):
     st.markdown("### **1. Long-Term Macro Trend Table (Weeks–Months)**")
-    st.markdown("Defines the structural regime relative to the 200 EMA noise buffer:")
-    st.markdown("* 🟢 **Bullish:** Price above upper noise buffer with an upward or flat 200 EMA trajectory.")
-    st.markdown("* 🔴 **Bearish:** Price below lower noise buffer with a downward 200 EMA trajectory.")
-    st.markdown("* ⚪ **Neutral / Buffer Zone:** Price hovering inside the noise buffer band around the 200 EMA. Lacks clear directional conviction.")
+    st.markdown("Defines structural regime relative to the 200 SMA noise buffer:")
+    st.markdown("* 🟢 **Bullish:** Price above upper noise buffer with an upward or flat 200 SMA trajectory.")
+    st.markdown("* 🔴 **Bearish:** Price below lower noise buffer with a downward 200 SMA trajectory.")
+    st.markdown("* ⚪ **Neutral / Buffer Zone:** Price hovering inside the noise buffer band around the 200 SMA.")
     st.markdown("* 🟡 **Overbought / Squeeze / Pullback:** Structural trend intact, short-term extension present.")
 
     st.markdown("---")
@@ -261,10 +261,10 @@ with st.expander("📖 **Methodology Guide: Status vs. Signal & Preset Calibrati
     st.markdown("Provides precise entry/exit timing based on short-term indicators:")
     st.markdown("* **ACCUMULATE:** High conviction entry—Macro Bullish + Price above 20/50 MAs + Volume confirmed (`RVOL >= threshold`).")
     st.markdown("* **HOLD:** Position active—Macro Bullish, but short-term momentum (RSI/Stoch) is extended.")
-    st.markdown("* **WAIT:** Macro Bullish, but price is pulling back below short-term moving averages (20 EMA / 50 SMA), or ADX < 20 indicating low momentum consolidation.")
-    st.markdown("* **WATCH:** Active Bollinger Squeeze—volatility compression preceding a potential breakout.")
-    st.markdown("* **BUFFER ZONE (Actionable Matrix):** Price lacks directional conviction inside the noise band. **New Money:** Wait for an ACCUMULATE breakout; do not enter. **Existing Positions:** Hold through minor noise, but monitor the lower buffer boundary for a breakdown.")
-    st.markdown("* **SELL / WARNING:** Breakdown below lower 200 EMA buffer or negative OBV divergence.")
+    st.markdown("* **WAIT:** Macro Bullish, but price is pulling back below short-term moving averages (20 SMA / 50 SMA), or ADX < 20.")
+    st.markdown("* **WATCH:** Active Bollinger Squeeze—volatility compression preceding potential breakout.")
+    st.markdown("* **BUFFER ZONE:** Price lacks directional conviction inside the noise band.")
+    st.markdown("* **SELL / WARNING:** Breakdown below lower 200 SMA buffer or negative OBV divergence.")
 
     st.markdown("---")
     st.markdown("### **3. Preset Parameter Rationale**")
