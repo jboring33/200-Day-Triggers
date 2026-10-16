@@ -154,7 +154,7 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
     for t in tickers:
         try:
             df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
-            if df.empty or len(df) < 205:
+            if df.empty or len(df) < 225: # Ensures enough bars for 21-day lookback
                 continue
 
             c = df["Close"].squeeze()
@@ -184,7 +184,7 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
             sma50 = float(c.rolling(50).mean().iloc[-1])
             sma200 = c.rolling(200).mean()
             p_sma200 = float(sma200.iloc[-1])
-            prev_sma200 = float(sma200.iloc[-6])
+            prev_sma200 = float(sma200.iloc[-21]) # Smoothed over a full month (21 trading days)
 
             atr = get_atr(df_clean)
             atr_pct = (atr / price) * 100
