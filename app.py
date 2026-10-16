@@ -309,24 +309,10 @@ else:
 if "preset_radio" not in st.session_state or st.session_state["preset_radio"] not in PRESET_CONFIGS:
     st.session_state["preset_radio"] = init_preset
 
-# Initialize ticker_text in state on cold boot
-if "ticker_text" not in st.session_state:
-    st.session_state["ticker_text"] = st.session_state["preset_tickers"][st.session_state["preset_radio"]]
-
 def on_preset_change():
     sel = st.session_state["preset_radio"]
-    # Safely update the widget state before the text area is instantiated
-    st.session_state["ticker_text"] = st.session_state["preset_tickers"][sel]
     st.query_params["preset"] = sel
-    st.query_params["tickers"] = st.session_state["ticker_text"]
-
-def on_ticker_change():
-    sel = st.session_state["preset_radio"]
-    val = st.session_state["ticker_text"]
-    st.session_state["preset_tickers"][sel] = val
-    save_persistent_state(st.session_state["preset_tickers"])
-    st.query_params["preset"] = sel
-    st.query_params["tickers"] = val
+    st.query_params["tickers"] = st.session_state["preset_tickers"][sel]
 
 run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_container_width=True)
 st.sidebar.divider()
@@ -340,10 +326,18 @@ selected_preset = st.sidebar.radio(
 
 active_defaults = PRESET_CONFIGS[selected_preset]
 
-# The text_area reads directly from session_state["ticker_text"] without using value=
+def on_ticker_change():
+    val = st.session_state[f"text_area_{selected_preset}"]
+    st.session_state["preset_tickers"][selected_preset] = val
+    save_persistent_state(st.session_state["preset_tickers"])
+    st.query_params["preset"] = selected_preset
+    st.query_params["tickers"] = val
+
+# Use a dynamic key per preset so Streamlit manages text area states cleanly without collision
 ticker_input = st.sidebar.text_area(
     "Watchlist Tickers (Editable):",
-    key="ticker_text",
+    value=st.session_state["preset_tickers"][selected_preset],
+    key=f"text_area_{selected_preset}",
     on_change=on_ticker_change,
     help="Edit tickers freely. Edits are saved to server disk and survive app sleep cycles.",
 )
@@ -358,7 +352,6 @@ if selected_preset == "Recommendations":
             new_picks = discover_top_candidates(all_current, top_n=10)
             if new_picks:
                 st.session_state["preset_tickers"]["Recommendations"] = ", ".join(new_picks)
-                st.session_state["ticker_text"] = st.session_state["preset_tickers"]["Recommendations"]
                 save_persistent_state(st.session_state["preset_tickers"])
                 st.sidebar.success("Recommendations updated with top 10 current candidates!")
                 st.rerun()
