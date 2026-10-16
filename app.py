@@ -309,4 +309,72 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
             buf_pct_val = eff_buf * 100.0
             target_pct_val = target_buffer_pct * 100.0
             if buf_pct_val <= (target_pct_val * 1.25):
-                buffer_label = f"🟢 {buf_pct_val:.
+                buffer_label = f"🟢 {buf_pct_val:.2f}%"
+            elif buf_pct_val <= (target_pct_val * 1.75):
+                buffer_label = f"🟡 {buf_pct_val:.2f}%"
+            else:
+                buffer_label = f"🔴 {buf_pct_val:.2f}%"
+
+            if price > u_th and slope_val in ["UP", "FLAT"]:
+                if rvol_ok and atr_ok:
+                    status_action = "🟢 ACCUMULATE"
+                else:
+                    status_action = "🟢 HOLD"
+            elif price < l_th and slope_val == "DOWN":
+                status_action = "🔴 SELL / ROTATE"
+            elif l_th <= price <= u_th:
+                status_action = "⚪ BUFFER ZONE"
+            else:
+                status_action = "🟡 CAUTION"
+
+            results.append({
+                "Ticker": t,
+                "Description": description,
+                "Price": round(price, 2),
+                "Status & Action": status_action,
+                "200 SMA": round(p_sma200, 2),
+                "% vs 200 SMA": f"{pct_sma200:+.2f}%",
+                "200 SMA Slope": slope_label,
+                "Buffer (%)": buffer_label,
+                "RVOL": rvol_label,
+                "ATR (%)": atr_label,
+            })
+        except Exception as e:
+            st.error(f"Error processing {t}: {str(e)}")
+
+    return pd.DataFrame(results)
+
+# --- Session State & URL Params Initialization ---
+
+url_params = st.query_params
+init_preset = url_params.get("preset", "Watching")
+if init_preset not in PRESET_CONFIGS:
+    init_preset = "Watching"
+
+if "preset_tickers" not in st.session_state:
+    st.session_state["preset_tickers"] = load_persistent_state()
+else:
+    for name, cfg in PRESET_CONFIGS.items():
+        if name not in st.session_state["preset_tickers"]:
+            st.session_state["preset_tickers"][name] = cfg["tickers"]
+
+if "preset_radio" not in st.session_state or st.session_state["preset_radio"] not in PRESET_CONFIGS:
+    st.session_state["preset_radio"] = init_preset
+
+def on_preset_change():
+    sel = st.session_state["preset_radio"]
+    st.query_params["preset"] = sel
+    st.query_params["tickers"] = st.session_state["preset_tickers"][sel]
+
+# --- Sidebar Configuration (Read Me & Screener Parameters) ---
+
+with st.sidebar:
+    with st.expander("📖 **Read Me**", expanded=False):
+        st.markdown("### **1. Quick Start Guide**")
+        st.markdown("1. **Select a Watchlist Preset**: Use the horizontal preset buttons at the top of the main panel to choose a curated asset pool (e.g., *Mag7*, *Sector ETFs*, *Bond ETFs*, *Broad Market*, or your own *Watching* list).")
+        st.markdown("2. **Customize Tickers**: The text box below the preset buttons displays active tickers. Add or remove comma-separated stock or ETF symbols freely. All changes are saved automatically.")
+        st.markdown("3. **Run the Screener**: Click the **🚀 Run Screener** button directly below the ticker input box to analyze secular trends.")
+        st.markdown("4. **Fine-Tune Parameters (Optional)**: Adjust core thresholds like the base buffer noise filter, minimum RVOL, or minimum ATR below.")
+
+        st.markdown("---")
+        st.markdown("### **2. Special Mode: 'Recommendations'
