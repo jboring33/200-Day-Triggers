@@ -320,4 +320,6 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
                 status_action = "🟡 CAUTION"
 
             results.append({
-                "Ticker": t
+                "Ticker": t,
+                "Description": description,
+                "Price": round(price,
