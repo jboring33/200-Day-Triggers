@@ -119,33 +119,27 @@ def get_bollinger(close, price):
         return f"LOWER BAND (${l_bb:.2f})", False
     return f"NORMAL ({bw_c:.1f}%)", False
 
-def get_logic_result(price, u_th, l_th, slope, adx, rsi, stoch, obv_s, is_sq, sma20, sma50, rvol_ok, rvol, buf):
+def get_logic_result(price, u_th, l_th, slope, adx, rsi, stoch, obv_s, is_sq, rvol_ok, rvol, buf):
     if price > u_th and slope in ["UP", "FLAT"]:
-        if adx < 20:
-            return "⚪ Consolidating", "WAIT", f"Above 200 SMA, but ADX ({adx:.1f}) < 20 signals choppy consolidation. Wait for trend strength expansion."
-        if rsi > 70 or stoch > 80:
-            return "🟡 Overbought", "HOLD", f"Macro UP, but short-term RSI ({rsi:.1f}) / Stoch ({stoch:.1f}) extended. Hold existing position, avoid new entry."
+        if rsi > 80 or stoch > 90:
+            return "🟡 Overbought", "HOLD", f"Macro secular trend UP, but momentum (RSI {rsi:.1f} / Stoch {stoch:.1f}) is highly extended. Hold position."
         if obv_s < 0 and rsi < 50:
             return "🔴 Divergence", "WARNING", "Negative OBV volume outflow signals distribution."
         if is_sq:
-            return "🟡 Squeeze", "WATCH", "Bollinger Band Squeeze active—prepare for breakout expansion."
-        if price > sma20 and price > sma50 and rvol_ok:
-            return "🟢 Bullish", "ACCUMULATE", f"Confirmed entry: Macro UP + Short MAs aligned + RVOL ({rvol:.2f}x)."
-        if price <= sma20 or price <= sma50:
-            return "🟡 Pullback", "WAIT", "Macro UP, but price is pulling back below 20 SMA / 50 SMA. Wait for short-term bounce."
-        return "🟡 Warning", "LOW VOLUME", f"Price above buffer, but short-term RVOL ({rvol:.2f}x) lacks volume confirmation."
+            return "🟡 Squeeze", "WATCH", "Bollinger Band Squeeze active—preparing for secular breakout expansion."
+        if rvol_ok:
+            return "🟢 Bullish", "ACCUMULATE", f"Confirmed secular entry: Price above 200 SMA buffer + Volume confirmed (RVOL {rvol:.2f}x)."
+        return "🟡 Warning", "LOW VOLUME", f"Price above 200 SMA buffer, but short-term RVOL ({rvol:.2f}x) lacks volume confirmation."
 
     if price < l_th and slope == "DOWN":
-        if adx < 20:
-            return "⚪ Consolidating", "WEAK BEAR", f"Below 200 SMA, but weak ADX ({adx:.1f})."
         if rvol_ok:
-            return "🔴 Bearish", "SELL", f"Selling volume confirmed below buffer (RVOL: {rvol:.2f}x)."
-        return "🔴 Bearish", "SELL LOW VOL", f"Below buffer with DOWN slope (RVOL: {rvol:.2f}x)."
+            return "🔴 Bearish", "SELL", f"Secular breakdown confirmed below lower buffer (RVOL {rvol:.2f}x)."
+        return "🔴 Bearish", "SELL LOW VOL", f"Below lower buffer with DOWN slope (RVOL {rvol:.2f}x)."
 
     if l_th <= price <= u_th:
-        return "⚪ Neutral", "BUFFER ZONE", f"Price within +/-{buf*100:.1f}% noise buffer of 200 SMA."
+        return "⚪ Neutral", "BUFFER ZONE", f"Price within +/-{buf*100:.1f}% noise buffer of 200 SMA. Hold existing positions; wait for breakout for new money."
 
-    return "🟡 Warning", "CAUTION", f"Crossed 200 SMA but slope ({slope}) unconfirmed."
+    return "🟡 Warning", "CAUTION", f"Crossed 200 SMA buffer but slope ({slope}) unconfirmed."
 
 def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
     macro_results = []
@@ -154,7 +148,7 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
     for t in tickers:
         try:
             df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
-            if df.empty or len(df) < 225: # Ensures enough bars for 21-day lookback
+            if df.empty or len(df) < 225:
                 continue
 
             c = df["Close"].squeeze()
@@ -180,8 +174,6 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
             else:
                 vol_status = "NORMAL / MODERATE"
 
-            sma20 = float(c.rolling(20).mean().iloc[-1])
-            sma50 = float(c.rolling(50).mean().iloc[-1])
             sma200 = c.rolling(200).mean()
             p_sma200 = float(sma200.iloc[-1])
             prev_sma200 = float(sma200.iloc[-21]) # Smoothed over a full month (21 trading days)
@@ -208,11 +200,10 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
 
             status, signal, msg = get_logic_result(
                 price, u_th, l_th, slope, adx, rsi, stoch,
-                obv_s, is_sq, sma20, sma50, rvol_ok, rvol, eff_buf
+                obv_s, is_sq, rvol_ok, rvol, eff_buf
             )
 
             pct_sma200 = ((price - p_sma200) / p_sma200) * 100.0
-            ma_alignment = "ABOVE 20 & 50" if (price > sma20 and price > sma50) else "BELOW SHORT MAs"
 
             macro_results.append({
                 "Ticker": t,
@@ -228,7 +219,6 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
             execution_results.append({
                 "Ticker": t,
                 "Action Signal": signal,
-                "Short MAs": ma_alignment,
                 "RVOL": round(rvol, 2),
                 "Vol State": vol_status,
                 "RSI (14)": round(rsi, 1),
@@ -248,38 +238,19 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
 st.title("📈 " + REPO_NAME)
 st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-with st.expander("📖 **Methodology Guide: Status vs. Signal & Preset Calibration**"):
-    st.markdown("### **1. Long-Term Macro Trend Table (Weeks–Months)**")
-    st.markdown("Defines structural regime relative to the 200 SMA noise buffer:")
+with st.expander("📖 **Methodology Guide: Pure 200 SMA Framework**"):
+    st.markdown("### **1. Long-Term Macro Trend Table (Months)**")
+    st.markdown("Defines structural regime relative to the 200 SMA and monthly slope:")
     st.markdown("* 🟢 **Bullish:** Price above upper noise buffer with an upward or flat 200 SMA trajectory.")
     st.markdown("* 🔴 **Bearish:** Price below lower noise buffer with a downward 200 SMA trajectory.")
-    st.markdown("* ⚪ **Neutral / Buffer Zone:** Price hovering inside the noise buffer band around the 200 SMA.")
-    st.markdown("* 🟡 **Overbought / Squeeze / Pullback:** Structural trend intact, short-term extension present.")
+    st.markdown("* ⚪ **Buffer Zone:** Price hovering inside the noise buffer band around the 200 SMA.")
 
     st.markdown("---")
-    st.markdown("### **2. Short-Term Execution & Triggers Table (Days–Weeks)**")
-    st.markdown("Provides precise entry/exit timing based on short-term indicators:")
-    st.markdown("* **ACCUMULATE:** High conviction entry—Macro Bullish + Price above 20/50 MAs + Volume confirmed (`RVOL >= threshold`).")
-    st.markdown("* **HOLD:** Position active—Macro Bullish, but short-term momentum (RSI/Stoch) is extended.")
-    st.markdown("* **WAIT:** Macro Bullish, but price is pulling back below short-term moving averages (20 SMA / 50 SMA), or ADX < 20.")
-    st.markdown("* **WATCH:** Active Bollinger Squeeze—volatility compression preceding potential breakout.")
-    st.markdown("* **BUFFER ZONE:** Price lacks directional conviction inside the noise band.")
-    st.markdown("* **SELL / WARNING:** Breakdown below lower 200 SMA buffer or negative OBV divergence.")
-
-    st.markdown("---")
-    st.markdown("### **3. Preset Parameter Rationale**")
-
-    p_data = [
-        {
-            "Preset Name": f"**{name}**",
-            "Buffer (%)": f"{cfg['buffer']:.1f}%",
-            "Min RVOL": f"{cfg['rvol']:.2f}x",
-            "Min ATR (%)": f"{cfg['min_atr']:.2f}%",
-            "Calibration Rationale": cfg["rationale"],
-        }
-        for name, cfg in PRESET_CONFIGS.items()
-    ]
-    st.table(pd.DataFrame(p_data))
+    st.markdown("### **2. Action Signals (Monthly/Quarterly Review)**")
+    st.markdown("* **ACCUMULATE:** Macro bull trend confirmed with volume backing.")
+    st.markdown("* **HOLD:** Secular trend intact, but short-term momentum is extended.")
+    st.markdown("* **BUFFER ZONE:** Price is inside the noise filter band—hold existing positions, avoid new capital deployment.")
+    st.markdown("* **SELL:** Breakdown below the 200 SMA noise buffer.")
 
 st.sidebar.header("Screener Configuration")
 
@@ -291,68 +262,3 @@ if init_preset not in PRESET_CONFIGS:
 def on_preset_change():
     sel = st.session_state["preset_radio"]
     st.session_state["ticker_text"] = PRESET_CONFIGS[sel]["tickers"]
-    st.query_params["preset"] = sel
-    st.query_params["tickers"] = st.session_state["ticker_text"]
-
-def on_ticker_change():
-    st.query_params["preset"] = st.session_state["preset_radio"]
-    st.query_params["tickers"] = st.session_state["ticker_text"]
-
-if "preset_radio" not in st.session_state or st.session_state["preset_radio"] not in PRESET_CONFIGS:
-    st.session_state["preset_radio"] = init_preset
-
-if "ticker_text" not in st.session_state:
-    st.session_state["ticker_text"] = url_params.get(
-        "tickers", PRESET_CONFIGS[init_preset]["tickers"]
-    )
-
-run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_container_width=True)
-st.sidebar.divider()
-
-selected_preset = st.sidebar.radio(
-    "Target Instance Preset:",
-    options=list(PRESET_CONFIGS.keys()),
-    key="preset_radio",
-    on_change=on_preset_change,
-)
-
-active_defaults = PRESET_CONFIGS[selected_preset]
-
-ticker_input = st.sidebar.text_area(
-    "Watchlist Tickers (Editable):",
-    key="ticker_text",
-    on_change=on_ticker_change,
-    help="Edit tickers freely. Updates refresh browser URL for bookmarking.",
-)
-
-buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
-rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
-min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
-
-if run_screener:
-    tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
-    if tickers_list:
-        with st.spinner("Analyzing market data..."):
-            df_macro, df_exec = analyze_tickers(
-                tickers_list,
-                default_buffer_pct=buffer_setting / 100.0,
-                rvol_threshold=rvol_setting,
-            )
-        if not df_macro.empty:
-            st.subheader("🌐 1. Macro Trend Regime (Weeks to Months)")
-            st.dataframe(df_macro, use_container_width=True, hide_index=True)
-
-            st.divider()
-
-            st.subheader("⚡ 2. Short-Term Execution & Triggers (Days to Weeks)")
-            st.dataframe(df_exec, use_container_width=True, hide_index=True)
-
-            st.divider()
-            full_df = pd.merge(df_macro, df_exec, on="Ticker")
-            csv_data = full_df.to_csv(index=False)
-            st.download_button(
-                "📥 Download Full Matrix CSV",
-                csv_data,
-                "200_day_triggers_full.csv",
-                "text/csv",
-            )
