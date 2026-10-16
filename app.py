@@ -74,76 +74,8 @@ def get_atr(df, window=14):
     tr = pd.concat([h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
     return float(tr.rolling(window).mean().iloc[-1])
 
-def get_rsi(close, window=14):
-    delta = close.diff()
-    g = delta.where(delta > 0, 0).rolling(window).mean()
-    l = (-delta.where(delta < 0, 0)).rolling(window).mean()
-    return float((100 - (100 / (1 + (g / l)))).iloc[-1])
-
-def get_adx(df, window=14):
-    h, l, c = df["High"], df["Low"], df["Close"]
-    up, down = h - h.shift(1), l.shift(1) - l
-    p_dm = np.where((up > down) & (up > 0), up, 0.0)
-    m_dm = np.where((down > up) & (down > 0), down, 0.0)
-    tr = pd.concat([h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
-    tr_s = tr.rolling(window).mean()
-    p_di = 100 * (pd.Series(p_dm, index=df.index).rolling(window).mean() / tr_s)
-    m_di = 100 * (pd.Series(m_dm, index=df.index).rolling(window).mean() / tr_s)
-    dx = 100 * (abs(p_di - m_di) / (p_di + m_di))
-    return float(dx.rolling(window).mean().iloc[-1])
-
-def get_stoch(df, window=14):
-    l_min = df["Low"].rolling(window).min()
-    h_max = df["High"].rolling(window).max()
-    k = 100 * ((df["Close"] - l_min) / (h_max - l_min))
-    return float(k.iloc[-1])
-
-def get_bollinger(close, price):
-    sma20 = close.rolling(20).mean()
-    std20 = close.rolling(20).std()
-    u_bb = float((sma20 + (std20 * 2)).iloc[-1])
-    l_bb = float((sma20 - (std20 * 2)).iloc[-1])
-    bw = ((sma20 + (std20 * 2)) - (sma20 - (std20 * 2))) / sma20
-    bw_c = float(bw.iloc[-1]) * 100
-    bw_a = float(bw.rolling(50).mean().iloc[-1]) * 100
-    bw_m = float(bw.rolling(50).min().iloc[-1]) * 100
-    is_sq = bw_c <= (bw_m * 1.15)
-    
-    if is_sq:
-        return f"SQUEEZE ({bw_c:.1f}%)", True
-    if bw_c > (bw_a * 1.20):
-        return f"EXPANDING VOL ({bw_c:.1f}%)", False
-    if price >= u_bb:
-        return f"UPPER BAND (${u_bb:.2f})", False
-    if price <= l_bb:
-        return f"LOWER BAND (${l_bb:.2f})", False
-    return f"NORMAL ({bw_c:.1f}%)", False
-
-def get_logic_result(price, u_th, l_th, slope, adx, rsi, stoch, obv_s, is_sq, rvol_ok, rvol, buf):
-    if price > u_th and slope in ["UP", "FLAT"]:
-        if rsi > 80 or stoch > 90:
-            return "🟡 Overbought", "HOLD", f"Macro secular trend UP, but momentum (RSI {rsi:.1f} / Stoch {stoch:.1f}) is highly extended. Hold position."
-        if obv_s < 0 and rsi < 50:
-            return "🔴 Divergence", "WARNING", "Negative OBV volume outflow signals distribution."
-        if is_sq:
-            return "🟡 Squeeze", "WATCH", "Bollinger Band Squeeze active—preparing for secular breakout expansion."
-        if rvol_ok:
-            return "🟢 Bullish", "ACCUMULATE", f"Confirmed secular entry: Price above 200 SMA buffer + Volume confirmed (RVOL {rvol:.2f}x)."
-        return "🟡 Warning", "LOW VOLUME", f"Price above 200 SMA buffer, but short-term RVOL ({rvol:.2f}x) lacks volume confirmation."
-
-    if price < l_th and slope == "DOWN":
-        if rvol_ok:
-            return "🔴 Bearish", "SELL", f"Secular breakdown confirmed below lower buffer (RVOL {rvol:.2f}x)."
-        return "🔴 Bearish", "SELL LOW VOL", f"Below lower buffer with DOWN slope (RVOL {rvol:.2f}x)."
-
-    if l_th <= price <= u_th:
-        return "⚪ Neutral", "BUFFER ZONE", f"Price within +/-{buf*100:.1f}% noise buffer of 200 SMA. Hold existing positions; wait for breakout for new money."
-
-    return "🟡 Warning", "CAUTION", f"Crossed 200 SMA buffer but slope ({slope}) unconfirmed."
-
 def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
-    macro_results = []
-    execution_results = []
+    results = []
 
     for t in tickers:
         try:
@@ -159,24 +91,15 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
 
             df_clean = pd.DataFrame({"High": h, "Low": l, "Close": c, "Open": o})
             price = float(c.iloc[-1])
-            open_p = float(o.iloc[-1])
             vol = float(v.iloc[-1])
 
             v_sma20 = float(v.rolling(20).mean().iloc[-1])
             rvol = vol / v_sma20 if v_sma20 > 0 else 1.0
             rvol_ok = rvol >= rvol_threshold
 
-            is_green = price >= open_p
-            if rvol >= 1.25 and is_green:
-                vol_status = "BULLISH (HEAVY BUY)"
-            elif rvol >= 1.25 and not is_green:
-                vol_status = "BEARISH (HEAVY SELL)"
-            else:
-                vol_status = "NORMAL / MODERATE"
-
             sma200 = c.rolling(200).mean()
             p_sma200 = float(sma200.iloc[-1])
-            prev_sma200 = float(sma200.iloc[-21]) # Smoothed over a full month (21 trading days)
+            prev_sma200 = float(sma200.iloc[-21]) # 1-month (21 trading day) smoothed slope lookback
 
             atr = get_atr(df_clean)
             atr_pct = (atr / price) * 100
@@ -185,55 +108,45 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
             u_th = p_sma200 * (1.0 + eff_buf)
             l_th = p_sma200 * (1.0 - eff_buf)
 
-            rsi = get_rsi(c)
-            adx = get_adx(df_clean)
-            stoch = get_stoch(df_clean)
-
-            dir_s = np.sign(c.diff()).fillna(0)
-            obv_s = float((dir_s * v).cumsum().diff(10).iloc[-1])
-            obv_label = "INFLOW" if obv_s > 0 else "OUTFLOW"
-
-            bb_text, is_sq = get_bollinger(c, price)
-
             sma_diff = ((p_sma200 - prev_sma200) / prev_sma200) * 100
             slope = "UP" if sma_diff > 0.05 else ("DOWN" if sma_diff < -0.05 else "FLAT")
-
-            status, signal, msg = get_logic_result(
-                price, u_th, l_th, slope, adx, rsi, stoch,
-                obv_s, is_sq, rvol_ok, rvol, eff_buf
-            )
-
             pct_sma200 = ((price - p_sma200) / p_sma200) * 100.0
 
-            macro_results.append({
+            # --- Unified Single-Rule Decision Logic ---
+            if price > u_th and slope in ["UP", "FLAT"]:
+                if rvol_ok:
+                    status_action = "🟢 ACCUMULATE"
+                    rationale = f"Price above upper noise buffer with a stable/rising 200 SMA. Volume confirmed (RVOL {rvol:.2f}x)."
+                else:
+                    status_action = "🟢 HOLD"
+                    rationale = f"Secular bull trend intact above 200 SMA buffer, but volume is light (RVOL {rvol:.2f}x). Hold existing position."
+            elif price < l_th and slope == "DOWN":
+                status_action = "🔴 SELL / ROTATE"
+                rationale = f"Secular breakdown confirmed below lower buffer with a declining 200 SMA. Rotate to safe harbor."
+            elif l_th <= price <= u_th:
+                status_action = "⚪ BUFFER ZONE (HOLD)"
+                rationale = f"Price is within the +/-{eff_buf*100:.1f}% noise band around the 200 SMA. Hold current positions; avoid new deployment until breakout."
+            else:
+                status_action = "🟡 CAUTION / WATCH"
+                rationale = f"Crossed 200 SMA buffer, but slope ({slope}) is unconfirmed. Monitor closely."
+
+            results.append({
                 "Ticker": t,
                 "Price": round(price, 2),
-                "Macro Status": status,
+                "Status & Action": status_action,
                 "200 SMA": round(p_sma200, 2),
                 "% vs 200 SMA": f"{pct_sma200:+.2f}%",
                 "200 SMA Slope": slope,
-                "ADX Strength": round(adx, 1),
-                "Noise Buffer": f"±{eff_buf*100:.1f}%",
-            })
-
-            execution_results.append({
-                "Ticker": t,
-                "Action Signal": signal,
                 "RVOL": round(rvol, 2),
-                "Vol State": vol_status,
-                "RSI (14)": round(rsi, 1),
-                "Stoch %K": round(stoch, 1),
-                "OBV Flow": obv_label,
-                "Bollinger State": bb_text,
                 "ATR (%)": round(atr_pct, 2),
-                "Execution Rationale": msg,
+                "Definitive Rationale": rationale,
             })
         except Exception as e:
             st.error(f"Error processing {t}: {str(e)}")
 
-    return pd.DataFrame(macro_results), pd.DataFrame(execution_results)
+    return pd.DataFrame(results)
 
-# --- Sidebar Configuration (Rendered First) ---
+# --- Sidebar Configuration ---
 
 st.sidebar.header("Screener Configuration")
 
@@ -288,21 +201,15 @@ min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active
 st.title("📈 " + REPO_NAME)
 st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-with st.expander("📖 **Methodology Guide & Preset Rationale**"):
-    st.markdown("### **1. Long-Term Macro Trend Table (200 SMA Secular Matrix)**")
-    st.markdown("* 🟢 **Bullish:** Price above upper noise buffer with an upward or flat 200 SMA trajectory.")
-    st.markdown("* 🔴 **Bearish:** Price below lower noise buffer with a downward 200 SMA trajectory.")
-    st.markdown("* ⚪ **Buffer Zone:** Price hovering inside the noise buffer band around the 200 SMA.")
+with st.expander("📖 **Methodology Guide: Unified 200 SMA Framework**"):
+    st.markdown("### **Single Table Decision Matrix (Monthly/Quarterly Review)**")
+    st.markdown("* 🟢 **ACCUMULATE:** Price securely above upper noise buffer, 200 SMA slope is UP/FLAT, and volume confirms.")
+    st.markdown("* 🟢 **HOLD:** Secular trend is intact above the buffer, but volume is moderate.")
+    st.markdown("* ⚪ **BUFFER ZONE (HOLD):** Price is chopping inside the noise band around the 200 SMA. Hold current holdings; do not add new capital.")
+    st.markdown("* 🔴 **SELL / ROTATE:** Price breached the lower buffer with a declining 200 SMA. Rotate to safe-harbor assets.")
 
     st.markdown("---")
-    st.markdown("### **2. Execution Recommendations & Guardrails**")
-    st.markdown("* **ACCUMULATE:** Macro bull trend confirmed with volume backing.")
-    st.markdown("* **HOLD:** Secular trend intact, but short-term momentum is extended.")
-    st.markdown("* **BUFFER ZONE:** Price is inside the noise filter band—hold existing positions, avoid new capital deployment.")
-    st.markdown("* **SELL:** Breakdown below the 200 SMA noise buffer.")
-
-    st.markdown("---")
-    st.markdown("### **3. Preset Parameter Overview**")
+    st.markdown("### **Preset Parameter Overview**")
     p_data = [
         {
             "Preset Name": f"**{name}**",
@@ -320,29 +227,23 @@ st.divider()
 if run_screener:
     tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
     if tickers_list:
-        with st.spinner("Analyzing market data..."):
-            df_macro, df_exec = analyze_tickers(
+        with st.spinner("Analyzing portfolio secular trends..."):
+            df_results = analyze_tickers(
                 tickers_list,
                 default_buffer_pct=buffer_setting / 100.0,
                 rvol_threshold=rvol_setting,
             )
-        if not df_macro.empty:
-            st.subheader("🌐 1. Macro Trend Regime (200 SMA Secular Matrix)")
-            st.dataframe(df_macro, use_container_width=True, hide_index=True)
+        if not df_results.empty:
+            st.subheader("📋 Unified Portfolio Action & Trend Matrix")
+            st.dataframe(df_results, use_container_width=True, hide_index=True)
 
             st.divider()
-
-            st.subheader("⚡ 2. Execution Recommendations & Guardrails")
-            st.dataframe(df_exec, use_container_width=True, hide_index=True)
-
-            st.divider()
-            full_df = pd.merge(df_macro, df_exec, on="Ticker")
-            csv_data = full_df.to_csv(index=False)
+            csv_data = df_results.to_csv(index=False)
             st.download_button(
-                "📥 Download Full Matrix CSV",
+                "📥 Download Matrix CSV",
                 csv_data,
-                "200_day_triggers_full.csv",
+                "200_day_unified_matrix.csv",
                 "text/csv",
             )
 else:
-    st.info("👈 Select your preset or watchlist in the sidebar and click **🚀 Run Screener** to generate the tables.")
+    st.info("👈 Select your preset or watchlist in the sidebar and click **🚀 Run Screener** to generate your consolidated portfolio table.")
