@@ -93,7 +93,7 @@ PRESET_CONFIGS = {
         "buffer": 2.0,
         "rvol": 1.00,
         "min_atr": 0.00,
-        "rationale": "Curated pool of top institutional buy candidates and factor/sector leaders, scannable for fresh deployment.",
+        "rationale": "Autonomous discovery pool where each ticker is evaluated individually against its own adaptive ATR and trend profile.",
     },
     "Broad Market": {
         "tickers": "SPY, QQQ, DJIA, EMXC, VEA",
@@ -209,7 +209,7 @@ def discover_top_candidates(existing_tickers, top_n=10):
     scored.sort(key=lambda x: x[1], reverse=True)
     return [item[0] for item in scored[:top_n]]
 
-def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_atr_threshold=0.50):
+def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_atr_threshold=0.50, is_recommendations=False):
     results = []
 
     for t in tickers:
@@ -232,7 +232,6 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
 
             v_sma20 = float(v.rolling(20).mean().iloc[-1])
             rvol = vol / v_sma20 if v_sma20 > 0 else 1.0
-            rvol_ok = rvol >= rvol_threshold
 
             sma200 = c.rolling(200).mean()
             p_sma200 = float(sma200.iloc[-1])
@@ -240,7 +239,18 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
 
             atr = get_atr(df_clean)
             atr_pct = (atr / price) * 100
-            eff_buf = max(default_buffer_pct, (atr / price) * 1.5)
+
+            # Autonomous evaluation per ticker if Recommendations preset is active
+            if is_recommendations:
+                # Each asset dynamically sets its own buffer based on its volatility (ATR)
+                eff_buf = max(0.015, (atr / price) * 1.25)
+                # Recommendations focus purely on structural trend confirmation above its self-scaled buffer
+                rvol_ok = True 
+                min_atr_val = 0.00
+            else:
+                eff_buf = max(default_buffer_pct, (atr / price) * 1.5)
+                rvol_ok = rvol >= rvol_threshold
+                min_atr_val = min_atr_threshold
 
             u_th = p_sma200 * (1.0 + eff_buf)
             l_th = p_sma200 * (1.0 - eff_buf)
@@ -259,8 +269,8 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
 
             pct_sma200 = ((price - p_sma200) / p_sma200) * 100.0
 
-            rvol_label = f"🟢 {rvol:.2f}x" if rvol_ok else f"🟡 {rvol:.2f}x"
-            atr_label = f"🟢 {atr_pct:.2f}%" if atr_pct >= min_atr_threshold else f"🔴 {atr_pct:.2f}%"
+            rvol_label = f"🟢 {rvol:.2f}x" if rvol >= 0.50 else f"🟡 {rvol:.2f}x"
+            atr_label = f"🟢 {atr_pct:.2f}%" if atr_pct >= min_atr_val else f"🔴 {atr_pct:.2f}%"
 
             if price > u_th and slope_val in ["UP", "FLAT"]:
                 if rvol_ok:
@@ -333,7 +343,6 @@ def on_ticker_change():
     st.query_params["preset"] = selected_preset
     st.query_params["tickers"] = val
 
-# Use a dynamic key per preset so Streamlit manages text area states cleanly without collision
 ticker_input = st.sidebar.text_area(
     "Watchlist Tickers (Editable):",
     value=st.session_state["preset_tickers"][selected_preset],
@@ -358,9 +367,16 @@ if selected_preset == "Recommendations":
             else:
                 st.sidebar.warning("No new qualifying candidates found.")
 
-buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
-rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
-min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
+# Conditionally display sliders or note based on preset
+if selected_preset == "Recommendations":
+    st.sidebar.info("💡 **Autonomous Mode Active**: Recommendations evaluate each ticker individually based on its own ATR volatility and structural trend.")
+    buffer_setting = 2.0
+    rvol_setting = 0.10
+    min_atr_setting = 0.00
+else:
+    buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
+    rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
+    min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
 
 # --- Main Page Layout ---
 
@@ -406,6 +422,7 @@ if run_screener:
                 default_buffer_pct=buffer_setting / 100.0,
                 rvol_threshold=rvol_setting,
                 min_atr_threshold=min_atr_setting,
+                is_recommendations=(selected_preset == "Recommendations"),
             )
         if not df_results.empty:
             st.subheader("📋 Unified Portfolio Action & Trend Matrix")
