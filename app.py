@@ -79,7 +79,15 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
 
     for t in tickers:
         try:
-            df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
+            ticker_obj = yf.Ticker(t)
+            # Fetch asset long name or short name, fallback to ticker symbol if unavailable
+            try:
+                info = ticker_obj.info
+                asset_name = info.get("longName") or info.get("shortName") or t
+            except Exception:
+                asset_name = t
+
+            df = ticker_obj.history(period="2y", auto_adjust=True)
             if df.empty or len(df) < 225:
                 continue
 
@@ -132,6 +140,7 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
 
             results.append({
                 "Ticker": t,
+                "Name": asset_name,
                 "Price": round(price, 2),
                 "Status & Action": status_action,
                 "200 SMA": round(p_sma200, 2),
