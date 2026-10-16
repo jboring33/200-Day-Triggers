@@ -8,7 +8,6 @@ st.set_page_config(page_title="200 Day Triggers", page_icon="📈", layout="wide
 
 REPO_NAME = "200 Day Triggers"
 
-# Concise asset descriptions for clarity during monthly reviews
 ASSET_DESCRIPTIONS = {
     "SPY": "S&P 500 Large-Cap ETF",
     "QQQ": "Nasdaq-100 Growth ETF",
@@ -120,12 +119,11 @@ def get_atr(df, window=14):
     tr = pd.concat([h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
     return float(tr.rolling(window).mean().iloc[-1])
 
-def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
+def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_atr_threshold=0.50):
     results = []
 
     for t in tickers:
         try:
-            # Look up concise description from dictionary, fallback to ticker symbol if unlisted
             description = ASSET_DESCRIPTIONS.get(t, f"Asset ({t})")
 
             df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
@@ -158,26 +156,36 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
             l_th = p_sma200 * (1.0 - eff_buf)
 
             sma_diff = ((p_sma200 - prev_sma200) / prev_sma200) * 100
-            slope = "UP" if sma_diff > 0.05 else ("DOWN" if sma_diff < -0.05 else "FLAT")
+            
+            # Categorize slope
+            if sma_diff > 0.05:
+                slope_label = "🟢 UP"
+                slope_val = "UP"
+            elif sma_diff < -0.05:
+                slope_label = "🔴 DOWN"
+                slope_val = "DOWN"
+            else:
+                slope_label = "⚪ FLAT"
+                slope_val = "FLAT"
+
             pct_sma200 = ((price - p_sma200) / p_sma200) * 100.0
 
+            # Color-coded metric flags
+            rvol_label = f"🟢 {rvol:.2f}x" if rvol_ok else f"🟡 {rvol:.2f}x"
+            atr_label = f"🟢 {atr_pct:.2f}%" if atr_pct >= min_atr_threshold else f"🔴 {atr_pct:.2f}%"
+
             # --- Unified Single-Rule Decision Logic ---
-            if price > u_th and slope in ["UP", "FLAT"]:
+            if price > u_th and slope_val in ["UP", "FLAT"]:
                 if rvol_ok:
                     status_action = "🟢 ACCUMULATE"
-                    rationale = f"Price above upper noise buffer with a stable/rising 200 SMA. Volume confirmed (RVOL {rvol:.2f}x)."
                 else:
                     status_action = "🟢 HOLD"
-                    rationale = f"Secular bull trend intact above 200 SMA buffer, but volume is light (RVOL {rvol:.2f}x). Hold existing position."
-            elif price < l_th and slope == "DOWN":
+            elif price < l_th and slope_val == "DOWN":
                 status_action = "🔴 SELL / ROTATE"
-                rationale = f"Secular breakdown confirmed below lower buffer with a declining 200 SMA. Rotate to safe harbor."
             elif l_th <= price <= u_th:
-                status_action = "⚪ BUFFER ZONE (HOLD)"
-                rationale = f"Price is within the +/-{eff_buf*100:.1f}% noise band around the 200 SMA. Hold current positions; avoid new deployment until breakout."
+                status_action = "⚪ BUFFER ZONE"
             else:
-                status_action = "🟡 CAUTION / WATCH"
-                rationale = f"Crossed 200 SMA buffer, but slope ({slope}) unconfirmed."
+                status_action = "🟡 CAUTION"
 
             results.append({
                 "Ticker": t,
@@ -186,10 +194,9 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
                 "Status & Action": status_action,
                 "200 SMA": round(p_sma200, 2),
                 "% vs 200 SMA": f"{pct_sma200:+.2f}%",
-                "200 SMA Slope": slope,
-                "RVOL": round(rvol, 2),
-                "ATR (%)": round(atr_pct, 2),
-                "Definitive Rationale": rationale,
+                "200 SMA Slope": slope_label,
+                "RVOL": rvol_label,
+                "ATR (%)": atr_label,
             })
         except Exception as e:
             st.error(f"Error processing {t}: {str(e)}")
@@ -262,7 +269,7 @@ with st.expander("📖 **Methodology Guide: Core Institutional Framework Explain
     st.markdown("### **2. Unified Table Decision Matrix (Monthly/Quarterly Review)**")
     st.markdown("* 🟢 **ACCUMULATE:** Price securely above upper noise buffer, 200 SMA slope is UP/FLAT over a 1-month lookback, and volume confirms.")
     st.markdown("* 🟢 **HOLD:** Secular trend is intact above the buffer, but volume is moderate.")
-    st.markdown("* ⚪ **BUFFER ZONE (HOLD):** Price is chopping inside the noise band around the 200 SMA. Hold current holdings; do not add new capital.")
+    st.markdown("* ⚪ **BUFFER ZONE:** Price is chopping inside the noise band around the 200 SMA. Hold current holdings; do not add new capital.")
     st.markdown("* 🔴 **SELL / ROTATE:** Price breached the lower buffer with a declining 200 SMA. Rotate to safe-harbor assets.")
 
     st.markdown("---")
@@ -289,6 +296,7 @@ if run_screener:
                 tickers_list,
                 default_buffer_pct=buffer_setting / 100.0,
                 rvol_threshold=rvol_setting,
+                min_atr_threshold=min_atr_setting,
             )
         if not df_results.empty:
             st.subheader("📋 Unified Portfolio Action & Trend Matrix")
