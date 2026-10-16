@@ -238,27 +238,17 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
 st.title("📈 " + REPO_NAME)
 st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-with st.expander("📖 **Methodology Guide: Pure 200 SMA Framework**"):
-    st.markdown("### **1. Long-Term Macro Trend Table (Months)**")
-    st.markdown("Defines structural regime relative to the 200 SMA and monthly slope:")
+with st.expander("📖 **Methodology Guide & Preset Rationale**"):
+    st.markdown("### **1. Long-Term Macro Trend Table (200 SMA Secular Matrix)**")
     st.markdown("* 🟢 **Bullish:** Price above upper noise buffer with an upward or flat 200 SMA trajectory.")
     st.markdown("* 🔴 **Bearish:** Price below lower noise buffer with a downward 200 SMA trajectory.")
     st.markdown("* ⚪ **Buffer Zone:** Price hovering inside the noise buffer band around the 200 SMA.")
 
     st.markdown("---")
-    st.markdown("### **2. Action Signals (Monthly/Quarterly Review)**")
+    st.markdown("### **2. Execution Recommendations & Guardrails**")
     st.markdown("* **ACCUMULATE:** Macro bull trend confirmed with volume backing.")
     st.markdown("* **HOLD:** Secular trend intact, but short-term momentum is extended.")
     st.markdown("* **BUFFER ZONE:** Price is inside the noise filter band—hold existing positions, avoid new capital deployment.")
     st.markdown("* **SELL:** Breakdown below the 200 SMA noise buffer.")
 
-st.sidebar.header("Screener Configuration")
-
-url_params = st.query_params
-init_preset = url_params.get("preset", "Watching")
-if init_preset not in PRESET_CONFIGS:
-    init_preset = "Watching"
-
-def on_preset_change():
-    sel = st.session_state["preset_radio"]
-    st.session_state["ticker_text"] = PRESET_CONFIGS[sel]["tickers"]
+    st.markdown("---")
