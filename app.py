@@ -163,7 +163,6 @@ def load_persistent_state():
         except Exception:
             pass
     
-    # Ensure all current presets from PRESET_CONFIGS exist
     for name, cfg in PRESET_CONFIGS.items():
         if name not in data or not data[name].strip():
             data[name] = cfg["tickers"]
@@ -303,13 +302,13 @@ if init_preset not in PRESET_CONFIGS:
 if "preset_tickers" not in st.session_state:
     st.session_state["preset_tickers"] = load_persistent_state()
 else:
-    # Safely merge any newly introduced presets if session state already existed
     for name, cfg in PRESET_CONFIGS.items():
         if name not in st.session_state["preset_tickers"] or not st.session_state["preset_tickers"][name].strip():
             st.session_state["preset_tickers"][name] = cfg["tickers"]
 
 def on_preset_change():
     sel = st.session_state["preset_radio"]
+    # Safely update the widget state key before render via callback
     st.session_state["ticker_text"] = st.session_state["preset_tickers"][sel]
     st.query_params["preset"] = sel
     st.query_params["tickers"] = st.session_state["ticker_text"]
@@ -325,8 +324,9 @@ def on_ticker_change():
 if "preset_radio" not in st.session_state or st.session_state["preset_radio"] not in PRESET_CONFIGS:
     st.session_state["preset_radio"] = init_preset
 
+# Initialize ticker_text safely once if missing
 if "ticker_text" not in st.session_state:
-    st.session_state["ticker_text"] = st.session_state["preset_tickers"][init_preset]
+    st.session_state["ticker_text"] = st.session_state["preset_tickers"][st.session_state["preset_radio"]]
 
 run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_container_width=True)
 st.sidebar.divider()
