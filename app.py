@@ -91,9 +91,9 @@ PRESET_CONFIGS = {
     "Recommendations": {
         "tickers": "SMH, IWF, MTUM, QUAL, IGV, ITA, XHB, XOP, IWM, DGRO",
         "buffer": 2.0,
-        "rvol": 1.00,
-        "min_atr": 0.00,
-        "rationale": "Autonomous discovery pool where each ticker is evaluated individually against its own adaptive ATR and trend profile.",
+        "rvol": 0.80,
+        "min_atr": 0.50,
+        "rationale": "Autonomous discovery pool requiring strict confluence (all-green indicators) to trigger accumulation.",
     },
     "Broad Market": {
         "tickers": "SPY, QQQ, DJIA, EMXC, VEA",
@@ -209,7 +209,7 @@ def discover_top_candidates(existing_tickers, top_n=10):
     scored.sort(key=lambda x: x[1], reverse=True)
     return [item[0] for item in scored[:top_n]]
 
-def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_atr_threshold=0.50, is_recommendations=False):
+def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_atr_threshold=0.50):
     results = []
 
     for t in tickers:
@@ -232,6 +232,7 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
 
             v_sma20 = float(v.rolling(20).mean().iloc[-1])
             rvol = vol / v_sma20 if v_sma20 > 0 else 1.0
+            rvol_ok = rvol >= rvol_threshold
 
             sma200 = c.rolling(200).mean()
             p_sma200 = float(sma200.iloc[-1])
@@ -239,18 +240,7 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
 
             atr = get_atr(df_clean)
             atr_pct = (atr / price) * 100
-
-            # Autonomous evaluation per ticker if Recommendations preset is active
-            if is_recommendations:
-                # Each asset dynamically sets its own buffer based on its volatility (ATR)
-                eff_buf = max(0.015, (atr / price) * 1.25)
-                # Recommendations focus purely on structural trend confirmation above its self-scaled buffer
-                rvol_ok = True 
-                min_atr_val = 0.00
-            else:
-                eff_buf = max(default_buffer_pct, (atr / price) * 1.5)
-                rvol_ok = rvol >= rvol_threshold
-                min_atr_val = min_atr_threshold
+            eff_buf = max(default_buffer_pct, (atr / price) * 1.5)
 
             u_th = p_sma200 * (1.0 + eff_buf)
             l_th = p_sma200 * (1.0 - eff_buf)
@@ -269,11 +259,15 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
 
             pct_sma200 = ((price - p_sma200) / p_sma200) * 100.0
 
-            rvol_label = f"🟢 {rvol:.2f}x" if rvol >= 0.50 else f"🟡 {rvol:.2f}x"
-            atr_label = f"🟢 {atr_pct:.2f}%" if atr_pct >= min_atr_val else f"🔴 {atr_pct:.2f}%"
+            rvol_ok = rvol >= rvol_threshold
+            atr_ok = atr_pct >= min_atr_threshold
 
+            rvol_label = f"🟢 {rvol:.2f}x" if rvol_ok else f"🟡 {rvol:.2f}x"
+            atr_label = f"🟢 {atr_pct:.2f}%" if atr_ok else f"🔴 {atr_pct:.2f}%"
+
+            # Strict Confluence Check: ACCUMULATE requires price > upper buffer, slope UP/FLAT, RVOL ok, and ATR ok
             if price > u_th and slope_val in ["UP", "FLAT"]:
-                if rvol_ok:
+                if rvol_ok and atr_ok:
                     status_action = "🟢 ACCUMULATE"
                 else:
                     status_action = "🟢 HOLD"
@@ -340,101 +334,5 @@ def on_ticker_change():
     val = st.session_state[f"text_area_{selected_preset}"]
     st.session_state["preset_tickers"][selected_preset] = val
     save_persistent_state(st.session_state["preset_tickers"])
-    st.query_params["preset"] = selected_preset
-    st.query_params["tickers"] = val
-
-ticker_input = st.sidebar.text_area(
-    "Watchlist Tickers (Editable):",
-    value=st.session_state["preset_tickers"][selected_preset],
-    key=f"text_area_{selected_preset}",
-    on_change=on_ticker_change,
-    help="Edit tickers freely. Edits are saved to server disk and survive app sleep cycles.",
-)
-
-if selected_preset == "Recommendations":
-    if st.sidebar.button("🔍 Scan & Refresh Recommendations"):
-        with st.spinner("Scanning global ETF universe for top bull-market candidates..."):
-            all_current = set()
-            for t_str in st.session_state["preset_tickers"].values():
-                all_current.update([t.strip().upper() for t in t_str.split(",") if t.strip()])
-            
-            new_picks = discover_top_candidates(all_current, top_n=10)
-            if new_picks:
-                st.session_state["preset_tickers"]["Recommendations"] = ", ".join(new_picks)
-                save_persistent_state(st.session_state["preset_tickers"])
-                st.sidebar.success("Recommendations updated with top 10 current candidates!")
-                st.rerun()
-            else:
-                st.sidebar.warning("No new qualifying candidates found.")
-
-# Conditionally display sliders or note based on preset
-if selected_preset == "Recommendations":
-    st.sidebar.info("💡 **Autonomous Mode Active**: Recommendations evaluate each ticker individually based on its own ATR volatility and structural trend.")
-    buffer_setting = 2.0
-    rvol_setting = 0.10
-    min_atr_setting = 0.00
-else:
-    buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
-    rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
-    min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
-
-# --- Main Page Layout ---
-
-st.title("📈 " + REPO_NAME)
-st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-
-with st.expander("📖 **Methodology Guide: Core Institutional Framework Explained**"):
-    st.markdown("### **1. Core Architectural Concepts & Why They Matter**")
-    st.markdown("* **200-Day Simple Moving Average (SMA):** The institutional baseline for macro trend-following (~10 months of price history). **Why it matters:** It defines the secular bull/bear boundary. Price above the 200 SMA indicates a healthy macro regime (Risk-On / Income generation); price below signals a structural bear regime (Risk-Off / Rotate to Safe Harbor).")
-    st.markdown("* **1-Month Slope Lookback (21 Trading Days):** Measures the directional trajectory of the 200 SMA over a full calendar month rather than volatile weekly wiggles. **Why it matters:** Prevents false trend reversals by demanding sustained directional conviction.")
-    st.markdown("* **Noise Buffer (±%):** A customizable percentage band built around the 200 SMA (dynamically scaled using ATR). **Why it matters:** Creates a neutral 'no-man's land' zone around the moving average line, eliminating whipsaws and unnecessary turnover during minor consolidations.")
-    st.markdown("* **Relative Volume (RVOL):** Compares trading volume against the asset's 20-day average. **Why it matters:** Ensures institutional participation backs breakouts or breakdowns before capital actions are triggered.")
-
-    st.markdown("---")
-    st.markdown("### **2. Unified Table Decision Matrix (Monthly/Quarterly Review)**")
-    st.markdown("* 🟢 **ACCUMULATE:** Price securely above upper noise buffer, 200 SMA slope is UP/FLAT over a 1-month lookback, and volume confirms.")
-    st.markdown("* 🟢 **HOLD:** Secular trend is intact above the buffer, but volume is moderate.")
-    st.markdown("* ⚪ **BUFFER ZONE:** Price is chopping inside the noise band around the 200 SMA. Hold current holdings; do not add new capital.")
-    st.markdown("* 🔴 **SELL / ROTATE:** Price breached the lower buffer with a declining 200 SMA. Rotate to safe-harbor assets.")
-
-    st.markdown("---")
-    st.markdown("### **3. Preset Parameter Overview**")
-    p_data = [
-        {
-            "Preset Name": f"**{name}**",
-            "Buffer (%)": f"{cfg['buffer']:.1f}%",
-            "Min RVOL": f"{cfg['rvol']:.2f}x",
-            "Min ATR (%)": f"{cfg['min_atr']:.2f}%",
-            "Calibration Rationale": cfg["rationale"],
-        }
-        for name, cfg in PRESET_CONFIGS.items()
-    ]
-    st.table(pd.DataFrame(p_data))
-
-st.divider()
-
-if run_screener:
-    tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
-    if tickers_list:
-        with st.spinner("Analyzing portfolio secular trends..."):
-            df_results = analyze_tickers(
-                tickers_list,
-                default_buffer_pct=buffer_setting / 100.0,
-                rvol_threshold=rvol_setting,
-                min_atr_threshold=min_atr_setting,
-                is_recommendations=(selected_preset == "Recommendations"),
-            )
-        if not df_results.empty:
-            st.subheader("📋 Unified Portfolio Action & Trend Matrix")
-            st.dataframe(df_results, use_container_width=True, hide_index=True)
-
-            st.divider()
-            csv_data = df_results.to_csv(index=False)
-            st.download_button(
-                "📥 Download Matrix CSV",
-                csv_data,
-                "200_day_unified_matrix.csv",
-                "text/csv",
-            )
-else:
-    st.info("👈 Select your preset in the sidebar and click **🚀 Run Screener** to generate your consolidated portfolio table.")
+    st.query_params
+    
