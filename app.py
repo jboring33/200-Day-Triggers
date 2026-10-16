@@ -1,4 +1,6 @@
 from datetime import datetime
+import json
+import os
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -7,6 +9,7 @@ import yfinance as yf
 st.set_page_config(page_title="200 Day Triggers", page_icon="📈", layout="wide")
 
 REPO_NAME = "200 Day Triggers"
+STATE_FILE = "watchlist_state.json"
 
 ASSET_DESCRIPTIONS = {
     "SPY": "S&P 500 Large-Cap ETF",
@@ -112,6 +115,30 @@ PRESET_CONFIGS = {
     },
 }
 
+# --- Persistence Helper Functions ---
+
+def load_persistent_state():
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r") as f:
+                data = json.load(f)
+                # Ensure all current presets exist in loaded data
+                for name, cfg in PRESET_CONFIGS.items():
+                    if name not in data:
+                        data[name] = cfg["tickers"]
+                return data
+        except Exception:
+            pass
+    # Fallback to default config tickers
+    return {name: cfg["tickers"] for name, cfg in PRESET_CONFIGS.items()}
+
+def save_persistent_state(state_dict):
+    try:
+        with open(STATE_FILE, "w") as f:
+            json.dump(state_dict, f, indent=4)
+    except Exception:
+        pass
+
 # --- Technical Helper Functions ---
 
 def get_atr(df, window=14):
@@ -212,23 +239,30 @@ init_preset = url_params.get("preset", "Watching")
 if init_preset not in PRESET_CONFIGS:
     init_preset = "Watching"
 
+# Initialize session state using persistent file storage
+if "preset_tickers" not in st.session_state:
+    st.session_state["preset_tickers"] = load_persistent_state()
+
 def on_preset_change():
     sel = st.session_state["preset_radio"]
-    st.session_state["ticker_text"] = PRESET_CONFIGS[sel]["tickers"]
+    st.session_state["ticker_text"] = st.session_state["preset_tickers"][sel]
     st.query_params["preset"] = sel
     st.query_params["tickers"] = st.session_state["ticker_text"]
 
 def on_ticker_change():
-    st.query_params["preset"] = st.session_state["preset_radio"]
-    st.query_params["tickers"] = st.session_state["ticker_text"]
+    sel = st.session_state["preset_radio"]
+    val = st.session_state["ticker_text"]
+    st.session_state["preset_tickers"][sel] = val
+    # Save changes immediately to disk so they survive server restarts
+    save_persistent_state(st.session_state["preset_tickers"])
+    st.query_params["preset"] = sel
+    st.query_params["tickers"] = val
 
 if "preset_radio" not in st.session_state or st.session_state["preset_radio"] not in PRESET_CONFIGS:
     st.session_state["preset_radio"] = init_preset
 
 if "ticker_text" not in st.session_state:
-    st.session_state["ticker_text"] = url_params.get(
-        "tickers", PRESET_CONFIGS[init_preset]["tickers"]
-    )
+    st.session_state["ticker_text"] = st.session_state["preset_tickers"][init_preset]
 
 run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_container_width=True)
 st.sidebar.divider()
@@ -246,7 +280,7 @@ ticker_input = st.sidebar.text_area(
     "Watchlist Tickers (Editable):",
     key="ticker_text",
     on_change=on_ticker_change,
-    help="Edit tickers freely. Updates refresh browser URL for bookmarking.",
+    help="Edit tickers freely. Edits are saved to server disk and survive app sleep cycles.",
 )
 
 buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
