@@ -377,4 +377,72 @@ with st.sidebar:
         st.markdown("4. **Fine-Tune Parameters (Optional)**: Adjust core thresholds like the base buffer noise filter, minimum RVOL, or minimum ATR below.")
 
         st.markdown("---")
-        st.markdown("### **2. Special Mode: 'Recommendations'
+        st.markdown("### **2. Special Mode: 'Recommendations'**")
+        st.markdown("If you select the **Recommendations** preset, the app acts as an autonomous open-world discovery engine:")
+        st.markdown("1. Click the **🔍 Scan & Refresh** button that appears on the left side of the ticker input box.")
+        st.markdown("2. The engine will scan liquid U.S. ETFs to find top-performing structural leaders currently trading above their rising 200-day moving averages.")
+        st.markdown("3. Once populated, click **🚀 Run Screener** to evaluate them.")
+
+        st.markdown("---")
+        st.markdown("### **3. Core Architectural Concepts**")
+        st.markdown("* **200-Day Simple Moving Average (SMA):** The institutional baseline for macro trend-following (~10 months of price history). Defines the secular bull/bear boundary.")
+        st.markdown("* **1-Month Slope Lookback (21 Trading Days):** Measures the directional trajectory of the 200 SMA over a full calendar month to prevent false trend reversals.")
+        st.markdown("* **Noise Buffer (±%):** A customizable percentage band built around the 200 SMA (dynamically scaled using ATR) to eliminate whipsaws during minor consolidations.")
+        st.markdown("* **Relative Volume (RVOL):** Compares trading volume against the asset's 20-day average to ensure institutional participation.")
+
+        st.markdown("---")
+        st.markdown("### **4. Status & Action Classification Matrix**")
+        st.markdown("Primary status is determined strictly by absolute price position relative to the 200 SMA upper and lower noise buffer thresholds:")
+        st.markdown("* 🟢 **ACCUMULATE:** Price is above the Upper Threshold, 200 SMA Slope is **UP** or **FLAT**, and both **RVOL** and **ATR (%)** satisfy minimum parameters. *Justification: Full institutional confluence and breakout confirmation.*")
+        st.markdown("* 🟢 **HOLD:** Price is above the Upper Threshold, 200 SMA Slope is **UP** or **FLAT**, but RVOL or ATR (%) falls below confirmation thresholds. *Justification: Secular trend is intact, but new capital allocation is paused.*")
+        st.markdown("* ⚪ **BUFFER ZONE:** Price is between the Lower and Upper Thresholds. *Justification: Price is chopping inside the noise band around the 200 SMA. Capital actions are held neutral to prevent whipsaws.*")
+        st.markdown("* 🟡 **CAUTION:** Price is outside the noise band, but diverges from the moving average slope trajectory (e.g., Price below Lower Threshold while Slope is **UP**, or Price above Upper Threshold while Slope is **DOWN**). *Justification: Signal divergence indicates potential regime transition; pause capital actions pending alignment.*")
+        st.markdown("* 🔴 **SELL / ROTATE:** Price is below the Lower Threshold and 200 SMA Slope is **DOWN**. *Justification: Confirmed structural bear regime. Triggers risk mitigation and rotation into safe-harbor assets.*")
+
+        st.markdown("---")
+        st.markdown("### **5. Indicator Visual Badging Logic**")
+        st.markdown("* **200 SMA Slope:** 🟢 **UP** (change > +0.05%), ⚪ **FLAT** (-0.05% to +0.05%), 🔴 **DOWN** (change < -0.05%).")
+        st.markdown("* **Buffer (%):** 🟢 **Green** if effective buffer <= 1.25x target baseline; 🟡 **Yellow** if <= 1.75x; 🔴 **Red** if wider than 1.75x baseline volatility.")
+        st.markdown("* **RVOL:** 🟢 **Green** if >= minimum RVOL parameter threshold; 🟡 **Yellow** if below.")
+        st.markdown("* **ATR (%):** 🟢 **Green** if >= minimum ATR parameter threshold; 🔴 **Red** if below.")
+
+    st.header("Screener Parameters")
+    st.divider()
+
+selected_preset = st.session_state["preset_radio"]
+active_defaults = PRESET_CONFIGS[selected_preset]
+
+if selected_preset == "Recommendations":
+    st.sidebar.info("💡 **Autonomous Mode**: Recommendations evaluate each ticker individually based on live market discovery.")
+    buffer_setting = 2.0
+    rvol_setting = 0.80
+    min_atr_setting = 0.50
+else:
+    buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
+    rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
+    min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
+
+# --- Main Layout ---
+
+st.title("📈 " + REPO_NAME)
+st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+# --- Top Header Preset Selector Bar ---
+selected_preset = st.radio(
+    "Preset Selection",
+    options=list(PRESET_CONFIGS.keys()),
+    key="preset_radio",
+    on_change=on_preset_change,
+    horizontal=True,
+    label_visibility="collapsed"
+)
+
+# --- Ticker Input Row ---
+if selected_preset == "Recommendations":
+    col_scan, col_input = st.columns([1, 3])
+    with col_scan:
+        if st.button("🔍 Scan & Refresh", use_container_width=True, type="secondary"):
+            with st.spinner("Executing Open-World Market Discovery..."):
+                all_current = set()
+                for t_str in st.session_state["preset_tickers"].values():
+                    all_current.update([t.strip().upper() for t in t_str
