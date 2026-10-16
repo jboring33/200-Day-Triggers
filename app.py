@@ -275,10 +275,12 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
                 eff_buf = max(0.015, (atr / price) * 1.25)
                 rvol_threshold_val = 0.80
                 min_atr_val = 0.50
+                target_buffer_pct = 0.020
             else:
                 eff_buf = max(default_buffer_pct, (atr / price) * 1.5)
                 rvol_threshold_val = rvol_threshold
                 min_atr_val = min_atr_threshold
+                target_buffer_pct = default_buffer_pct
 
             u_th = p_sma200 * (1.0 + eff_buf)
             l_th = p_sma200 * (1.0 - eff_buf)
@@ -299,10 +301,12 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
             rvol_label = f"🟢 {rvol:.2f}x" if rvol_ok else f"🟡 {rvol:.2f}x"
             atr_label = f"🟢 {atr_pct:.2f}%" if atr_ok else f"🔴 {atr_pct:.2f}%"
             
+            # Buffer color indicator matched against active preset parameters
             buf_pct_val = eff_buf * 100.0
-            if 1.0 <= buf_pct_val <= 3.5:
+            target_pct_val = target_buffer_pct * 100.0
+            if buf_pct_val <= (target_pct_val * 1.25):
                 buffer_label = f"🟢 {buf_pct_val:.2f}%"
-            elif buf_pct_val < 1.0:
+            elif buf_pct_val <= (target_pct_val * 1.75):
                 buffer_label = f"🟡 {buf_pct_val:.2f}%"
             else:
                 buffer_label = f"🔴 {buf_pct_val:.2f}%"
@@ -381,12 +385,7 @@ else:
 st.title("📈 " + REPO_NAME)
 st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-# --- Top Header Control Bar: Run Button & Preset Menu ---
-col_run, col_dummy = st.columns([1, 4])
-with col_run:
-    st.markdown("### &nbsp;") 
-    run_screener = st.button("🚀 Run Screener", type="primary", use_container_width=True)
-
+# --- Top Header Preset Selector Bar ---
 selected_preset = st.radio(
     "Preset Selection",
     options=list(PRESET_CONFIGS.keys()),
@@ -396,11 +395,10 @@ selected_preset = st.radio(
     label_visibility="collapsed"
 )
 
-# --- Ticker Input & Scan Control Row ---
+# --- Ticker Input Row ---
 if selected_preset == "Recommendations":
     col_scan, col_input = st.columns([1, 3])
     with col_scan:
-        st.markdown("### &nbsp;")
         if st.button("🔍 Scan & Refresh", use_container_width=True, type="secondary"):
             with st.spinner("Executing Open-World Market Discovery..."):
                 all_current = set()
@@ -445,6 +443,9 @@ else:
         on_change=on_ticker_change,
         help="Edit tickers freely. Edits are saved to server disk and survive app sleep cycles.",
     )
+
+# --- Action Button directly below Watchlist Ticker entry box ---
+run_screener = st.button("🚀 Run Screener", type="primary", use_container_width=True)
 
 st.divider()
 
