@@ -128,7 +128,7 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
                 rationale = f"Price is within the +/-{eff_buf*100:.1f}% noise band around the 200 SMA. Hold current positions; avoid new deployment until breakout."
             else:
                 status_action = "🟡 CAUTION / WATCH"
-                rationale = f"Crossed 200 SMA buffer, but slope ({slope}) is unconfirmed."
+                rationale = f"Crossed 200 SMA buffer, but slope ({slope}) unconfirmed."
 
             results.append({
                 "Ticker": t,
@@ -201,12 +201,12 @@ min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active
 st.title("📈 " + REPO_NAME)
 st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-with st.expander("📖 **Methodology Guide: Core Indicators & Framework Explained**"):
+with st.expander("📖 **Methodology Guide: Core Institutional Framework Explained**"):
     st.markdown("### **1. Core Architectural Concepts & Why They Matter**")
-    st.markdown("* **200-Day Simple Moving Average (SMA):** The gold standard baseline for institutional trend-following. It averages the closing prices of the last 200 trading days (~10 months) to filter out daily market noise. **Why it matters:** It defines the secular macro boundary. Price above the 200 SMA indicates a healthy bull market (Risk-On / Income generation); price below signals a structural bear market (Risk-Off / Rotate to Safe Harbor).")
-    st.markdown("* **Noise Buffer (±%):** A customizable percentage band built around the 200 SMA (e.g., ±2.0%). **Why it matters:** Assets frequently chop directly across the exact moving average line without changing direction. The buffer creates a neutral 'no-man's land' zone, preventing false breakout signals and eliminating unnecessary turnover during minor market consolidations.")
-    st.markdown("* **Relative Volume (RVOL):** Compares today's trading volume against the asset's 20-day average volume (e.g., 1.0x = average volume, 1.25x = heavy volume). **Why it matters:** Price moves driven by low volume are often traps. Requiring RVOL confirmation ensures that institutional buyers or sellers are actively backing the move before an action signal triggers.")
-    st.markdown("* **Average True Range (ATR):** Measures an asset's day-to-day price volatility range as a percentage of its share price. **Why it matters:** Different assets breathe differently (e.g., stable bond funds vs. high-beta tech stocks). ATR ensures our noise buffer scales dynamically to match the natural volatility of each specific asset.")
+    st.markdown("* **200-Day Simple Moving Average (SMA):** The institutional baseline for macro trend-following (~10 months of price history). **Why it matters:** It defines the secular bull/bear boundary. Price above the 200 SMA indicates a healthy macro regime (Risk-On / Income generation); price below signals a structural bear regime (Risk-Off / Rotate to Safe Harbor).")
+    st.markdown("* **1-Month Slope Lookback (21 Trading Days):** Measures the directional trajectory of the 200 SMA over a full calendar month rather than volatile weekly wiggles. **Why it matters:** Prevents false trend reversals by demanding sustained directional conviction.")
+    st.markdown("* **Noise Buffer (±%):** A customizable percentage band built around the 200 SMA (dynamically scaled using ATR). **Why it matters:** Creates a neutral 'no-man's land' zone around the moving average line, eliminating whipsaws and unnecessary turnover during minor consolidations.")
+    st.markdown("* **Relative Volume (RVOL):** Compares trading volume against the asset's 20-day average. **Why it matters:** Ensures institutional participation backs breakouts or breakdowns before capital actions are triggered.")
 
     st.markdown("---")
     st.markdown("### **2. Unified Table Decision Matrix (Monthly/Quarterly Review)**")
