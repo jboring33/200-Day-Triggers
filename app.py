@@ -233,7 +233,57 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
 
     return pd.DataFrame(macro_results), pd.DataFrame(execution_results)
 
-# --- UI Layout ---
+# --- Sidebar Configuration (Rendered First) ---
+
+st.sidebar.header("Screener Configuration")
+
+url_params = st.query_params
+init_preset = url_params.get("preset", "Watching")
+if init_preset not in PRESET_CONFIGS:
+    init_preset = "Watching"
+
+def on_preset_change():
+    sel = st.session_state["preset_radio"]
+    st.session_state["ticker_text"] = PRESET_CONFIGS[sel]["tickers"]
+    st.query_params["preset"] = sel
+    st.query_params["tickers"] = st.session_state["ticker_text"]
+
+def on_ticker_change():
+    st.query_params["preset"] = st.session_state["preset_radio"]
+    st.query_params["tickers"] = st.session_state["ticker_text"]
+
+if "preset_radio" not in st.session_state or st.session_state["preset_radio"] not in PRESET_CONFIGS:
+    st.session_state["preset_radio"] = init_preset
+
+if "ticker_text" not in st.session_state:
+    st.session_state["ticker_text"] = url_params.get(
+        "tickers", PRESET_CONFIGS[init_preset]["tickers"]
+    )
+
+run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_container_width=True)
+st.sidebar.divider()
+
+selected_preset = st.sidebar.radio(
+    "Target Instance Preset:",
+    options=list(PRESET_CONFIGS.keys()),
+    key="preset_radio",
+    on_change=on_preset_change,
+)
+
+active_defaults = PRESET_CONFIGS[selected_preset]
+
+ticker_input = st.sidebar.text_area(
+    "Watchlist Tickers (Editable):",
+    key="ticker_text",
+    on_change=on_ticker_change,
+    help="Edit tickers freely. Updates refresh browser URL for bookmarking.",
+)
+
+buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
+rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
+min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
+
+# --- Main Page Layout ---
 
 st.title("📈 " + REPO_NAME)
 st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -252,3 +302,47 @@ with st.expander("📖 **Methodology Guide & Preset Rationale**"):
     st.markdown("* **SELL:** Breakdown below the 200 SMA noise buffer.")
 
     st.markdown("---")
+    st.markdown("### **3. Preset Parameter Overview**")
+    p_data = [
+        {
+            "Preset Name": f"**{name}**",
+            "Buffer (%)": f"{cfg['buffer']:.1f}%",
+            "Min RVOL": f"{cfg['rvol']:.2f}x",
+            "Min ATR (%)": f"{cfg['min_atr']:.2f}%",
+            "Calibration Rationale": cfg["rationale"],
+        }
+        for name, cfg in PRESET_CONFIGS.items()
+    ]
+    st.table(pd.DataFrame(p_data))
+
+st.divider()
+
+if run_screener:
+    tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
+    if tickers_list:
+        with st.spinner("Analyzing market data..."):
+            df_macro, df_exec = analyze_tickers(
+                tickers_list,
+                default_buffer_pct=buffer_setting / 100.0,
+                rvol_threshold=rvol_setting,
+            )
+        if not df_macro.empty:
+            st.subheader("🌐 1. Macro Trend Regime (200 SMA Secular Matrix)")
+            st.dataframe(df_macro, use_container_width=True, hide_index=True)
+
+            st.divider()
+
+            st.subheader("⚡ 2. Execution Recommendations & Guardrails")
+            st.dataframe(df_exec, use_container_width=True, hide_index=True)
+
+            st.divider()
+            full_df = pd.merge(df_macro, df_exec, on="Ticker")
+            csv_data = full_df.to_csv(index=False)
+            st.download_button(
+                "📥 Download Full Matrix CSV",
+                csv_data,
+                "200_day_triggers_full.csv",
+                "text/csv",
+            )
+else:
+    st.info("👈 Select your preset or watchlist in the sidebar and click **🚀 Run Screener** to generate the tables.")
