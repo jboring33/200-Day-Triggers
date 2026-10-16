@@ -185,4 +185,111 @@ def get_asset_description(symbol):
 def fetch_open_world_universe():
     try:
         screener = yf.Screener()
-        screener.set_
+        screener.set_body({
+            "size": 50,
+            "offset": 0,
+            "sortField": "dayvolume",
+            "sortType": "DESC",
+            "quoteType": "ETF",
+            "query": {
+                "operator": "AND",
+                "operands": [
+                    {"operator": "GT", "operands": ["dayvolume", 500000]},
+                    {"operator": "EQ", "operands": ["region", "us"]}
+                ]
+            }
+        })
+        res = screener.response
+        quotes = res.get("quotes", [])
+        symbols = [q["symbol"] for q in quotes if "symbol" in q]
+        if symbols:
+            return symbols
+    except Exception:
+        pass
+    
+    return [
+        "SPY", "QQQ", "IWM", "SMH", "XLF", "XLE", "XLK", "XLV", "XLI", 
+        "XLP", "XLY", "XLC", "XLB", "XLU", "XLRE", "IGV", "ITA", "XHB", 
+        "XME", "XOP", "KRE", "SOXX", "XBI", "GLD", "SLV", "MTUM", "QUAL", 
+        "IWF", "IWD", "DGRO", "VWO", "EFA"
+    ]
+
+def discover_open_world_candidates(existing_tickers, top_n=10):
+    live_universe = fetch_open_world_universe()
+    candidates = [t for t in live_universe if t not in existing_tickers]
+    scored = []
+    
+    for t in candidates:
+        try:
+            df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
+            if df.empty or len(df) < 225:
+                continue
+            c = df["Close"].squeeze()
+            price = float(c.iloc[-1])
+            sma200 = c.rolling(200).mean()
+            p_sma200 = float(sma200.iloc[-1])
+            prev_sma200 = float(sma200.iloc[-21])
+            
+            sma_diff = ((p_sma200 - prev_sma200) / prev_sma200) * 100
+            slope = "UP" if sma_diff > 0.05 else ("DOWN" if sma_diff < -0.05 else "FLAT")
+            pct_above = ((price - p_sma200) / p_sma200) * 100.0
+            
+            if price > p_sma200 and slope == "UP":
+                scored.append((t, pct_above))
+        except Exception:
+            continue
+            
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return [item[0] for item in scored[:top_n]]
+
+def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_atr_threshold=0.50, is_recommendations=False):
+    results = []
+    for t in tickers:
+        try:
+            description = get_asset_description(t)
+            df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
+            if df.empty or len(df) < 225:
+                continue
+
+            c = df["Close"].squeeze()
+            h = df["High"].squeeze()
+            l = df["Low"].squeeze()
+            o = df["Open"].squeeze()
+            v = df["Volume"].squeeze()
+
+            df_clean = pd.DataFrame({"High": h, "Low": l, "Close": c, "Open": o})
+            price = float(c.iloc[-1])
+            vol = float(v.iloc[-1])
+
+            v_sma20 = float(v.rolling(20).mean().iloc[-1])
+            rvol = vol / v_sma20 if v_sma20 > 0 else 1.0
+
+            sma200 = c.rolling(200).mean()
+            p_sma200 = float(sma200.iloc[-1])
+            prev_sma200 = float(sma200.iloc[-21])
+
+            atr = get_atr(df_clean)
+            atr_pct = (atr / price) * 100
+
+            if is_recommendations:
+                eff_buf = max(0.015, (atr / price) * 1.25)
+                rvol_threshold_val = 0.80
+                min_atr_val = 0.50
+                target_buffer_pct = 0.020
+            else:
+                eff_buf = max(default_buffer_pct, (atr / price) * 1.5)
+                rvol_threshold_val = rvol_threshold
+                min_atr_val = min_atr_threshold
+                target_buffer_pct = default_buffer_pct
+
+            u_th = p_sma200 * (1.0 + eff_buf)
+            l_th = p_sma200 * (1.0 - eff_buf)
+
+            sma_diff = ((p_sma200 - prev_sma200) / prev_sma200) * 100
+            
+            if sma_diff > 0.05:
+                slope_label, slope_val = "🟢 UP", "UP"
+            elif sma_diff < -0.05:
+                slope_label, slope_val = "🔴 DOWN", "DOWN"
+            else:
+                slope_label, slope_val = "⚪ FLAT", "
