@@ -250,5 +250,135 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
                 min_atr_val = min_atr_threshold
 
             u_th = p_sma200 * (1.0 + eff_buf)
-            l_th =
+            l_th = p_sma200 * (1.0 - eff_buf)
+
+            sma_diff = ((p_sma200 - prev_sma200) / prev_sma200) * 100
             
+            if sma_diff > 0.05:
+                slope_label = "🟢 UP"
+                slope_val = "UP"
+            elif sma_diff < -0.05:
+                slope_label = "🔴 DOWN"
+                slope_val = "DOWN"
+            else:
+                slope_label = "⚪ FLAT"
+                slope_val = "FLAT"
+
+            pct_sma200 = ((price - p_sma200) / p_sma200) * 100.0
+
+            rvol_ok = rvol >= rvol_threshold_val
+            atr_ok = atr_pct >= min_atr_val
+
+            rvol_label = f"🟢 {rvol:.2f}x" if rvol_ok else f"🟡 {rvol:.2f}x"
+            atr_label = f"🟢 {atr_pct:.2f}%" if atr_ok else f"🔴 {atr_pct:.2f}%"
+
+            if price > u_th and slope_val in ["UP", "FLAT"]:
+                if rvol_ok and atr_ok:
+                    status_action = "🟢 ACCUMULATE"
+                else:
+                    status_action = "🟢 HOLD"
+            elif price < l_th and slope_val == "DOWN":
+                status_action = "🔴 SELL / ROTATE"
+            elif l_th <= price <= u_th:
+                status_action = "⚪ BUFFER ZONE"
+            else:
+                status_action = "🟡 CAUTION"
+
+            results.append({
+                "Ticker": t,
+                "Description": description,
+                "Price": round(price, 2),
+                "Status & Action": status_action,
+                "200 SMA": round(p_sma200, 2),
+                "% vs 200 SMA": f"{pct_sma200:+.2f}%",
+                "200 SMA Slope": slope_label,
+                "RVOL": rvol_label,
+                "ATR (%)": atr_label,
+            })
+        except Exception as e:
+            st.error(f"Error processing {t}: {str(e)}")
+
+    return pd.DataFrame(results)
+
+# --- Sidebar Configuration ---
+
+st.sidebar.header("Screener Configuration")
+
+url_params = st.query_params
+init_preset = url_params.get("preset", "Watching")
+if init_preset not in PRESET_CONFIGS:
+    init_preset = "Watching"
+
+if "preset_tickers" not in st.session_state:
+    st.session_state["preset_tickers"] = load_persistent_state()
+else:
+    for name, cfg in PRESET_CONFIGS.items():
+        if name not in st.session_state["preset_tickers"]:
+            st.session_state["preset_tickers"][name] = cfg["tickers"]
+
+if "preset_radio" not in st.session_state or st.session_state["preset_radio"] not in PRESET_CONFIGS:
+    st.session_state["preset_radio"] = init_preset
+
+def on_preset_change():
+    sel = st.session_state["preset_radio"]
+    st.query_params["preset"] = sel
+    st.query_params["tickers"] = st.session_state["preset_tickers"][sel]
+
+run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_container_width=True)
+st.sidebar.divider()
+
+selected_preset = st.sidebar.radio(
+    "Target Instance Preset:",
+    options=list(PRESET_CONFIGS.keys()),
+    key="preset_radio",
+    on_change=on_preset_change,
+)
+
+active_defaults = PRESET_CONFIGS[selected_preset]
+
+if selected_preset == "Recommendations":
+    if st.sidebar.button("🔍 Scan & Refresh Recommendations", use_container_width=True):
+        with st.spinner("Scanning global ETF universe for top bull-market candidates..."):
+            all_current = set()
+            for t_str in st.session_state["preset_tickers"].values():
+                all_current.update([t.strip().upper() for t in t_str.split(",") if t.strip()])
+            
+            new_picks = discover_top_candidates(all_current, top_n=10)
+            if new_picks:
+                st.session_state["preset_tickers"]["Recommendations"] = ", ".join(new_picks)
+                save_persistent_state(st.session_state["preset_tickers"])
+                st.sidebar.success("Recommendations updated!")
+                st.rerun()
+            else:
+                st.sidebar.warning("No new qualifying candidates found.")
+
+def on_ticker_change():
+    val = st.session_state[f"text_area_{selected_preset}"]
+    st.session_state["preset_tickers"][selected_preset] = val
+    save_persistent_state(st.session_state["preset_tickers"])
+    st.query_params["preset"] = selected_preset
+    st.query_params["tickers"] = val
+
+ticker_input = st.sidebar.text_area(
+    "Watchlist Tickers (Editable):",
+    value=st.session_state["preset_tickers"][selected_preset],
+    key=f"text_area_{selected_preset}",
+    on_change=on_ticker_change,
+    help="Edit tickers freely. Edits are saved to server disk and survive app sleep cycles.",
+)
+
+if selected_preset == "Recommendations":
+    st.sidebar.info("💡 **Autonomous Mode**: Recommendations evaluate each ticker individually based on its own ATR volatility and trend profile.")
+    buffer_setting = 2.0
+    rvol_setting = 0.80
+    min_atr_setting = 0.50
+else:
+    buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
+    rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
+    min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
+
+# --- Main Page Layout ---
+
+st.title("📈 " + REPO_NAME)
+st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S
+                                                      
