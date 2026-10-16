@@ -309,10 +309,16 @@ else:
 if "preset_radio" not in st.session_state or st.session_state["preset_radio"] not in PRESET_CONFIGS:
     st.session_state["preset_radio"] = init_preset
 
+# Initialize ticker_text in state on cold boot
+if "ticker_text" not in st.session_state:
+    st.session_state["ticker_text"] = st.session_state["preset_tickers"][st.session_state["preset_radio"]]
+
 def on_preset_change():
     sel = st.session_state["preset_radio"]
+    # Safely update the widget state before the text area is instantiated
+    st.session_state["ticker_text"] = st.session_state["preset_tickers"][sel]
     st.query_params["preset"] = sel
-    st.query_params["tickers"] = st.session_state["preset_tickers"][sel]
+    st.query_params["tickers"] = st.session_state["ticker_text"]
 
 def on_ticker_change():
     sel = st.session_state["preset_radio"]
@@ -334,9 +340,9 @@ selected_preset = st.sidebar.radio(
 
 active_defaults = PRESET_CONFIGS[selected_preset]
 
+# The text_area reads directly from session_state["ticker_text"] without using value=
 ticker_input = st.sidebar.text_area(
     "Watchlist Tickers (Editable):",
-    value=st.session_state["preset_tickers"][selected_preset],
     key="ticker_text",
     on_change=on_ticker_change,
     help="Edit tickers freely. Edits are saved to server disk and survive app sleep cycles.",
@@ -352,6 +358,7 @@ if selected_preset == "Recommendations":
             new_picks = discover_top_candidates(all_current, top_n=10)
             if new_picks:
                 st.session_state["preset_tickers"]["Recommendations"] = ", ".join(new_picks)
+                st.session_state["ticker_text"] = st.session_state["preset_tickers"]["Recommendations"]
                 save_persistent_state(st.session_state["preset_tickers"])
                 st.sidebar.success("Recommendations updated with top 10 current candidates!")
                 st.rerun()
@@ -361,3 +368,63 @@ if selected_preset == "Recommendations":
 buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
 rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
 min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
+
+# --- Main Page Layout ---
+
+st.title("📈 " + REPO_NAME)
+st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+with st.expander("📖 **Methodology Guide: Core Institutional Framework Explained**"):
+    st.markdown("### **1. Core Architectural Concepts & Why They Matter**")
+    st.markdown("* **200-Day Simple Moving Average (SMA):** The institutional baseline for macro trend-following (~10 months of price history). **Why it matters:** It defines the secular bull/bear boundary. Price above the 200 SMA indicates a healthy macro regime (Risk-On / Income generation); price below signals a structural bear regime (Risk-Off / Rotate to Safe Harbor).")
+    st.markdown("* **1-Month Slope Lookback (21 Trading Days):** Measures the directional trajectory of the 200 SMA over a full calendar month rather than volatile weekly wiggles. **Why it matters:** Prevents false trend reversals by demanding sustained directional conviction.")
+    st.markdown("* **Noise Buffer (±%):** A customizable percentage band built around the 200 SMA (dynamically scaled using ATR). **Why it matters:** Creates a neutral 'no-man's land' zone around the moving average line, eliminating whipsaws and unnecessary turnover during minor consolidations.")
+    st.markdown("* **Relative Volume (RVOL):** Compares trading volume against the asset's 20-day average. **Why it matters:** Ensures institutional participation backs breakouts or breakdowns before capital actions are triggered.")
+
+    st.markdown("---")
+    st.markdown("### **2. Unified Table Decision Matrix (Monthly/Quarterly Review)**")
+    st.markdown("* 🟢 **ACCUMULATE:** Price securely above upper noise buffer, 200 SMA slope is UP/FLAT over a 1-month lookback, and volume confirms.")
+    st.markdown("* 🟢 **HOLD:** Secular trend is intact above the buffer, but volume is moderate.")
+    st.markdown("* ⚪ **BUFFER ZONE:** Price is chopping inside the noise band around the 200 SMA. Hold current holdings; do not add new capital.")
+    st.markdown("* 🔴 **SELL / ROTATE:** Price breached the lower buffer with a declining 200 SMA. Rotate to safe-harbor assets.")
+
+    st.markdown("---")
+    st.markdown("### **3. Preset Parameter Overview**")
+    p_data = [
+        {
+            "Preset Name": f"**{name}**",
+            "Buffer (%)": f"{cfg['buffer']:.1f}%",
+            "Min RVOL": f"{cfg['rvol']:.2f}x",
+            "Min ATR (%)": f"{cfg['min_atr']:.2f}%",
+            "Calibration Rationale": cfg["rationale"],
+        }
+        for name, cfg in PRESET_CONFIGS.items()
+    ]
+    st.table(pd.DataFrame(p_data))
+
+st.divider()
+
+if run_screener:
+    tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
+    if tickers_list:
+        with st.spinner("Analyzing portfolio secular trends..."):
+            df_results = analyze_tickers(
+                tickers_list,
+                default_buffer_pct=buffer_setting / 100.0,
+                rvol_threshold=rvol_setting,
+                min_atr_threshold=min_atr_setting,
+            )
+        if not df_results.empty:
+            st.subheader("📋 Unified Portfolio Action & Trend Matrix")
+            st.dataframe(df_results, use_container_width=True, hide_index=True)
+
+            st.divider()
+            csv_data = df_results.to_csv(index=False)
+            st.download_button(
+                "📥 Download Matrix CSV",
+                csv_data,
+                "200_day_unified_matrix.csv",
+                "text/csv",
+            )
+else:
+    st.info("👈 Select your preset in the sidebar and click **🚀 Run Screener** to generate your consolidated portfolio table.")
