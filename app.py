@@ -8,6 +8,52 @@ st.set_page_config(page_title="200 Day Triggers", page_icon="📈", layout="wide
 
 REPO_NAME = "200 Day Triggers"
 
+# Concise asset descriptions for clarity during monthly reviews
+ASSET_DESCRIPTIONS = {
+    "SPY": "S&P 500 Large-Cap ETF",
+    "QQQ": "Nasdaq-100 Growth ETF",
+    "DJIA": "Dow Jones Industrial Average ETF",
+    "EMXC": "Emerging Markets ex-China ETF",
+    "VEA": "Vanguard Developed Markets ETF",
+    "NVDA": "NVIDIA Corporation (AI/Semiconductors)",
+    "AAPL": "Apple Inc. (Consumer Tech)",
+    "MSFT": "Microsoft Corporation (Cloud/Software)",
+    "AMZN": "Amazon.com Inc. (E-Commerce/Cloud)",
+    "GOOGL": "Alphabet Inc. (Search/AI)",
+    "META": "Meta Platforms Inc. (Social Media/AI)",
+    "TSLA": "Tesla Inc. (EV/Clean Energy)",
+    "XLC": "Communication Services Sector ETF",
+    "XLY": "Consumer Discretionary Sector ETF",
+    "XLP": "Consumer Staples Sector ETF",
+    "XLE": "Energy Sector ETF",
+    "XLF": "Financial Sector ETF",
+    "XLV": "Health Care Sector ETF",
+    "XLI": "Industrial Sector ETF",
+    "XLB": "Materials Sector ETF",
+    "XLRE": "Real Estate Sector ETF",
+    "XLK": "Technology Sector ETF",
+    "XLU": "Utilities Sector ETF",
+    "VGT": "Vanguard Information Technology ETF",
+    "SGOV": "iShares 0-3 Month Treasury Bond ETF",
+    "JPST": "JPMorgan Ultra-Short Income ETF",
+    "JAAA": "JPMorgan Collateralized Loan Obligation ETF",
+    "JBBB": "JPMorgan High Yield CLO ETF",
+    "SCYB": "BNY Mellon High Yield Beta ETF",
+    "JEPI": "JPMorgan Equity Premium Income ETF",
+    "JEPQ": "JPMorgan Nasdaq Equity Premium Income ETF",
+    "XYLD": "Global X S&P 500 Covered Call ETF",
+    "QYLD": "Global X Nasdaq 100 Covered Call ETF",
+    "USMV": "iShares MSCI USA Min Vol Factor ETF",
+    "SPHD": "Invesco S&P 500 High Dividend Low Vol ETF",
+    "SCHD": "Schwab U.S. Dividend Equity ETF",
+    "VYM": "Vanguard High Dividend Yield ETF",
+    "FBTC": "Fidelity Wise Origin Bitcoin Fund",
+    "IBIT": "iShares Bitcoin Trust",
+    "IAUM": "iShares Gold Trust Micro",
+    "GLD": "SPDR Gold Shares",
+    "SLV": "iShares Silver Trust",
+}
+
 PRESET_CONFIGS = {
     "Watching": {
         "tickers": "SPY, QQQ, NVDA, EMXC, VGT",
@@ -79,15 +125,10 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
 
     for t in tickers:
         try:
-            ticker_obj = yf.Ticker(t)
-            # Fetch asset long name or short name, fallback to ticker symbol if unavailable
-            try:
-                info = ticker_obj.info
-                asset_name = info.get("longName") or info.get("shortName") or t
-            except Exception:
-                asset_name = t
+            # Look up concise description from dictionary, fallback to ticker symbol if unlisted
+            description = ASSET_DESCRIPTIONS.get(t, f"Asset ({t})")
 
-            df = ticker_obj.history(period="2y", auto_adjust=True)
+            df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
             if df.empty or len(df) < 225:
                 continue
 
@@ -140,7 +181,7 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
 
             results.append({
                 "Ticker": t,
-                "Name": asset_name,
+                "Description": description,
                 "Price": round(price, 2),
                 "Status & Action": status_action,
                 "200 SMA": round(p_sma200, 2),
