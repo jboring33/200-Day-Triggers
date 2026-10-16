@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 
-st.set_page_config(page_title="200 Day Triggers", page_icon="📈", layout="wide")
+st.set_page_config(page_title="200 Day Triggers", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
 REPO_NAME = "200 Day Triggers"
 STATE_FILE = "watchlist_state.json"
@@ -382,12 +382,10 @@ st.title("📈 " + REPO_NAME)
 st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 # --- Top Header Control Bar: Run Button & Preset Menu ---
-col_run, col_title = st.columns([1, 4])
+col_run, col_dummy = st.columns([1, 4])
 with col_run:
     st.markdown("### &nbsp;") 
     run_screener = st.button("🚀 Run Screener", type="primary", use_container_width=True)
-with col_title:
-    st.markdown("### Target Instance Preset")
 
 selected_preset = st.radio(
     "Preset Selection",
@@ -521,4 +519,7 @@ if run_screener:
                 "text/csv",
             )
 else:
-    st.info("👈 Click **🚀 Run Screener** above, adjust your parameters in the sidebar, and generate your consolidated portfolio table.")
+    if selected_preset == "Recommendations":
+        st.info("💡 **Workflow Notice**: Click **🔍 Scan & Refresh** first to fetch live open-world market leaders, then click **🚀 Run Screener** to evaluate them.")
+    else:
+        st.info("💡 Enter your tickers above and click **🚀 Run Screener** to generate your consolidated portfolio table.")
