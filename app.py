@@ -298,7 +298,14 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
 
             rvol_label = f"🟢 {rvol:.2f}x" if rvol_ok else f"🟡 {rvol:.2f}x"
             atr_label = f"🟢 {atr_pct:.2f}%" if atr_ok else f"🔴 {atr_pct:.2f}%"
-            buffer_label = f"{eff_buf * 100:.2f}%"
+            
+            buf_pct_val = eff_buf * 100.0
+            if 1.0 <= buf_pct_val <= 3.5:
+                buffer_label = f"🟢 {buf_pct_val:.2f}%"
+            elif buf_pct_val < 1.0:
+                buffer_label = f"🟡 {buf_pct_val:.2f}%"
+            else:
+                buffer_label = f"🔴 {buf_pct_val:.2f}%"
 
             if price > u_th and slope_val in ["UP", "FLAT"]:
                 if rvol_ok and atr_ok:
@@ -329,7 +336,7 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
 
     return pd.DataFrame(results)
 
-st.sidebar.header("Screener Configuration")
+# --- Session State & URL Params Initialization ---
 
 url_params = st.query_params
 init_preset = url_params.get("preset", "Watching")
@@ -351,48 +358,14 @@ def on_preset_change():
     st.query_params["preset"] = sel
     st.query_params["tickers"] = st.session_state["preset_tickers"][sel]
 
+# --- Sidebar Configuration (Only Buffer, RVOL, ATR & Run Button) ---
+
+st.sidebar.header("Screener Parameters")
 run_screener = st.sidebar.button("🚀 Run Screener", type="primary", use_container_width=True)
 st.sidebar.divider()
 
-selected_preset = st.sidebar.radio(
-    "Target Instance Preset:",
-    options=list(PRESET_CONFIGS.keys()),
-    key="preset_radio",
-    on_change=on_preset_change,
-)
-
+selected_preset = st.session_state["preset_radio"]
 active_defaults = PRESET_CONFIGS[selected_preset]
-
-if selected_preset == "Recommendations":
-    if st.sidebar.button("🔍 Scan & Refresh Recommendations", use_container_width=True):
-        with st.spinner("Executing Open-World Market Discovery..."):
-            all_current = set()
-            for t_str in st.session_state["preset_tickers"].values():
-                all_current.update([t.strip().upper() for t in t_str.split(",") if t.strip()])
-            
-            new_picks = discover_open_world_candidates(all_current, top_n=10)
-            if new_picks:
-                st.session_state["preset_tickers"]["Recommendations"] = ", ".join(new_picks)
-                save_persistent_state(st.session_state["preset_tickers"])
-                st.sidebar.success("Recommendations updated with top live market candidates!")
-                st.rerun()
-            else:
-                st.sidebar.warning("No new qualifying candidates found.")
-
-def on_ticker_change():
-    val = st.session_state[f"text_area_{selected_preset}"]
-    st.session_state["preset_tickers"][selected_preset] = val
-    save_persistent_state(st.session_state["preset_tickers"])
-    st.query_params["preset"] = selected_preset
-    st.query_params["tickers"] = val
-
-ticker_input = st.sidebar.text_area(
-    "Watchlist Tickers (Editable):",
-    value=st.session_state["preset_tickers"][selected_preset],
-    key=f"text_area_{selected_preset}",
-    on_change=on_ticker_change,
-    help="Edits are saved to server disk and survive app sleep cycles.",
-)
 
 if selected_preset == "Recommendations":
     st.sidebar.info("💡 **Autonomous Mode**: Recommendations evaluate each ticker individually based on live market discovery.")
@@ -404,8 +377,72 @@ else:
     rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
     min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
 
+# --- Main Layout ---
+
 st.title("📈 " + REPO_NAME)
 st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+# --- Row 1: Horizontal Preset Selector Menu ---
+st.markdown("### **Target Instance Preset**")
+selected_preset = st.radio(
+    "Preset Selection",
+    options=list(PRESET_CONFIGS.keys()),
+    key="preset_radio",
+    on_change=on_preset_change,
+    horizontal=True,
+    label_visibility="collapsed"
+)
+
+# --- Row 2: Ticker Input & Scan Control ---
+if selected_preset == "Recommendations":
+    col_scan, col_input = st.columns([1, 3])
+    with col_scan:
+        if st.button("🔍 Scan & Refresh", use_container_width=True, type="secondary"):
+            with st.spinner("Executing Open-World Market Discovery..."):
+                all_current = set()
+                for t_str in st.session_state["preset_tickers"].values():
+                    all_current.update([t.strip().upper() for t in t_str.split(",") if t.strip()])
+                
+                new_picks = discover_open_world_candidates(all_current, top_n=10)
+                if new_picks:
+                    st.session_state["preset_tickers"]["Recommendations"] = ", ".join(new_picks)
+                    save_persistent_state(st.session_state["preset_tickers"])
+                    st.success("Recommendations updated!")
+                    st.rerun()
+                else:
+                    st.warning("No new qualifying candidates found.")
+    with col_input:
+        def on_ticker_change():
+            val = st.session_state[f"text_area_{selected_preset}"]
+            st.session_state["preset_tickers"][selected_preset] = val
+            save_persistent_state(st.session_state["preset_tickers"])
+            st.query_params["preset"] = selected_preset
+            st.query_params["tickers"] = val
+
+        ticker_input = st.text_input(
+            "Watchlist Tickers (Editable):",
+            value=st.session_state["preset_tickers"][selected_preset],
+            key=f"text_area_{selected_preset}",
+            on_change=on_ticker_change,
+            help="Edit tickers freely. Edits are saved to server disk and survive app sleep cycles.",
+        )
+else:
+    def on_ticker_change():
+        val = st.session_state[f"text_area_{selected_preset}"]
+        st.session_state["preset_tickers"][selected_preset] = val
+        save_persistent_state(st.session_state["preset_tickers"])
+        st.query_params["preset"] = selected_preset
+        st.query_params["tickers"] = val
+
+    ticker_input = st.text_input(
+        "Watchlist Tickers (Editable):",
+        value=st.session_state["preset_tickers"][selected_preset],
+        key=f"text_area_{selected_preset}",
+        on_change=on_ticker_change,
+        help="Edit tickers freely. Edits are saved to server disk and survive app sleep cycles.",
+    )
+
+st.divider()
 
 with st.expander("📖 **Methodology Guide: Core Institutional Framework Explained**"):
     st.markdown("### **1. Core Architectural Concepts & Why They Matter**")
@@ -478,4 +515,4 @@ if run_screener:
                 "text/csv",
             )
 else:
-    st.info("👈 Select your preset in the sidebar and click **🚀 Run Screener** to generate your consolidated portfolio table.")
+    st.info("👈 Select your preset above, check your parameters in the sidebar, and click **🚀 Run Screener** to generate your consolidated portfolio table.")
