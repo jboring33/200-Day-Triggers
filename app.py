@@ -9,6 +9,13 @@ st.set_page_config(page_title="200 Day Triggers", page_icon="📈", layout="wide
 REPO_NAME = "200 Day Triggers"
 
 PRESET_CONFIGS = {
+    "Portfolio": {
+        "tickers": "",
+        "buffer": 2.0,
+        "rvol": 1.00,
+        "min_atr": 0.50,
+        "rationale": "Custom user portfolio view for monthly/quarterly quick reference. Enter your exact holdings freely.",
+    },
     "Watching": {
         "tickers": "SPY, QQQ, NVDA, EMXC, VGT",
         "buffer": 2.0,
@@ -151,9 +158,9 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80):
 st.sidebar.header("Screener Configuration")
 
 url_params = st.query_params
-init_preset = url_params.get("preset", "Watching")
+init_preset = url_params.get("preset", "Portfolio")
 if init_preset not in PRESET_CONFIGS:
-    init_preset = "Watching"
+    init_preset = "Portfolio"
 
 def on_preset_change():
     sel = st.session_state["preset_radio"]
@@ -252,5 +259,7 @@ if run_screener:
                 "200_day_unified_matrix.csv",
                 "text/csv",
             )
+    else:
+        st.warning("⚠️ Please enter one or more tickers in the sidebar text box for your Portfolio preset.")
 else:
-    st.info("👈 Select your preset or watchlist in the sidebar and click **🚀 Run Screener** to generate your consolidated portfolio table.")
+    st.info("👈 Select your preset or enter your portfolio tickers in the sidebar, then click **🚀 Run Screener**.")
