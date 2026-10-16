@@ -155,17 +155,20 @@ DISCOVERY_UNIVERSE = [
 # --- Persistence Helper Functions ---
 
 def load_persistent_state():
+    data = {}
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r") as f:
                 data = json.load(f)
-                for name, cfg in PRESET_CONFIGS.items():
-                    if name not in data or not data[name].strip():
-                        data[name] = cfg["tickers"]
-                return data
         except Exception:
             pass
-    return {name: cfg["tickers"] for name, cfg in PRESET_CONFIGS.items()}
+    
+    # Ensure all current presets from PRESET_CONFIGS exist
+    for name, cfg in PRESET_CONFIGS.items():
+        if name not in data or not data[name].strip():
+            data[name] = cfg["tickers"]
+            
+    return data
 
 def save_persistent_state(state_dict):
     try:
@@ -299,6 +302,11 @@ if init_preset not in PRESET_CONFIGS:
 
 if "preset_tickers" not in st.session_state:
     st.session_state["preset_tickers"] = load_persistent_state()
+else:
+    # Safely merge any newly introduced presets if session state already existed
+    for name, cfg in PRESET_CONFIGS.items():
+        if name not in st.session_state["preset_tickers"] or not st.session_state["preset_tickers"][name].strip():
+            st.session_state["preset_tickers"][name] = cfg["tickers"]
 
 def on_preset_change():
     sel = st.session_state["preset_radio"]
