@@ -12,6 +12,7 @@ REPO_NAME = "200 Day Triggers"
 STATE_FILE = "watchlist_state.json"
 
 ASSET_DESCRIPTIONS = {
+    # Core & Existing Database Tickers
     "SPY": "S&P 500 Large-Cap ETF",
     "QQQ": "Nasdaq-100 Growth ETF",
     "DJIA": "Dow Jones Industrial Average ETF",
@@ -54,6 +55,29 @@ ASSET_DESCRIPTIONS = {
     "IAUM": "iShares Gold Trust Micro",
     "GLD": "SPDR Gold Shares",
     "SLV": "iShares Silver Trust",
+    # Expanded Discovery Universe Descriptions
+    "IWM": "iShares Russell 2000 ETF",
+    "VWO": "Vanguard FTSE Emerging Markets ETF",
+    "EFA": "iShares MSCI EAFE ETF",
+    "IWF": "iShares Russell 1000 Growth ETF",
+    "IWD": "iShares Russell 1000 Value ETF",
+    "DGRO": "iShares Core Dividend Growth ETF",
+    "NOBL": "ProShares S&P 500 Dividend Aristocrats ETF",
+    "QUAL": "iShares MSCI USA Quality Factor ETF",
+    "MTUM": "iShares MSCI USA Momentum Factor ETF",
+    "SMH": "VanEck Semiconductor ETF",
+    "XSD": "SPDR S&P Semiconductor ETF",
+    "IGV": "iShares Expanded Tech-Software Sector ETF",
+    "ITA": "iShares U.S. Aerospace & Defense ETF",
+    "XHB": "SPDR S&P Homebuilders ETF",
+    "XME": "SPDR S&P Metals & Mining ETF",
+    "XOP": "SPDR S&P Oil & Gas Exploration & Production ETF",
+    "KRE": "SPDR S&P Regional Banking ETF",
+    "HYG": "iShares iBoxx $ High Yield Corporate Bond ETF",
+    "LQD": "iShares iBoxx $ Investment Grade Corporate Bond ETF",
+    "TLT": "iShares 20+ Year Treasury Bond ETF",
+    "SOXX": "iShares Semiconductor ETF",
+    "XBI": "SPDR S&P Biotech ETF",
 }
 
 PRESET_CONFIGS = {
@@ -115,6 +139,13 @@ PRESET_CONFIGS = {
     },
 }
 
+# Pool of candidate ETFs for discovery
+DISCOVERY_UNIVERSE = [
+    "IWM", "VWO", "EFA", "IWF", "IWD", "DGRO", "NOBL", "QUAL", "MTUM", 
+    "SMH", "XSD", "IGV", "ITA", "XHB", "XME", "XOP", "KRE", "HYG", 
+    "LQD", "TLT", "SOXX", "XBI"
+]
+
 # --- Persistence Helper Functions ---
 
 def load_persistent_state():
@@ -122,14 +153,12 @@ def load_persistent_state():
         try:
             with open(STATE_FILE, "r") as f:
                 data = json.load(f)
-                # Ensure all current presets exist in loaded data
                 for name, cfg in PRESET_CONFIGS.items():
                     if name not in data:
                         data[name] = cfg["tickers"]
                 return data
         except Exception:
             pass
-    # Fallback to default config tickers
     return {name: cfg["tickers"] for name, cfg in PRESET_CONFIGS.items()}
 
 def save_persistent_state(state_dict):
@@ -139,12 +168,40 @@ def save_persistent_state(state_dict):
     except Exception:
         pass
 
-# --- Technical Helper Functions ---
+# --- Technical & Discovery Helper Functions ---
 
 def get_atr(df, window=14):
     h, l, c = df["High"], df["Low"], df["Close"]
     tr = pd.concat([h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
     return float(tr.rolling(window).mean().iloc[-1])
+
+def discover_top_candidates(existing_tickers, top_n=10):
+    candidates = [t for t in DISCOVERY_UNIVERSE if t not in existing_tickers]
+    scored = []
+    for t in candidates:
+        try:
+            df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
+            if df.empty or len(df) < 225:
+                continue
+            c = df["Close"].squeeze()
+            price = float(c.iloc[-1])
+            sma200 = c.rolling(200).mean()
+            p_sma200 = float(sma200.iloc[-1])
+            prev_sma200 = float(sma200.iloc[-21])
+            
+            sma_diff = ((p_sma200 - prev_sma200) / prev_sma200) * 100
+            slope = "UP" if sma_diff > 0.05 else ("DOWN" if sma_diff < -0.05 else "FLAT")
+            pct_above = ((price - p_sma200) / p_sma200) * 100.0
+            
+            # Filter for confirmed bull trend with rising 200 SMA slope
+            if price > p_sma200 and slope == "UP":
+                scored.append((t, pct_above))
+        except Exception:
+            continue
+    
+    # Sort by strongest % above 200 SMA
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return [item[0] for item in scored[:top_n]]
 
 def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_atr_threshold=0.50):
     results = []
@@ -184,7 +241,6 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
 
             sma_diff = ((p_sma200 - prev_sma200) / prev_sma200) * 100
             
-            # Categorize slope
             if sma_diff > 0.05:
                 slope_label = "🟢 UP"
                 slope_val = "UP"
@@ -197,11 +253,9 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
 
             pct_sma200 = ((price - p_sma200) / p_sma200) * 100.0
 
-            # Color-coded metric flags
             rvol_label = f"🟢 {rvol:.2f}x" if rvol_ok else f"🟡 {rvol:.2f}x"
             atr_label = f"🟢 {atr_pct:.2f}%" if atr_pct >= min_atr_threshold else f"🔴 {atr_pct:.2f}%"
 
-            # --- Unified Single-Rule Decision Logic ---
             if price > u_th and slope_val in ["UP", "FLAT"]:
                 if rvol_ok:
                     status_action = "🟢 ACCUMULATE"
@@ -239,7 +293,6 @@ init_preset = url_params.get("preset", "Watching")
 if init_preset not in PRESET_CONFIGS:
     init_preset = "Watching"
 
-# Initialize session state using persistent file storage
 if "preset_tickers" not in st.session_state:
     st.session_state["preset_tickers"] = load_persistent_state()
 
@@ -253,7 +306,6 @@ def on_ticker_change():
     sel = st.session_state["preset_radio"]
     val = st.session_state["ticker_text"]
     st.session_state["preset_tickers"][sel] = val
-    # Save changes immediately to disk so they survive server restarts
     save_persistent_state(st.session_state["preset_tickers"])
     st.query_params["preset"] = sel
     st.query_params["tickers"] = val
@@ -282,6 +334,26 @@ ticker_input = st.sidebar.text_area(
     on_change=on_ticker_change,
     help="Edit tickers freely. Edits are saved to server disk and survive app sleep cycles.",
 )
+
+# --- Discovery Tool Button (Active when Watching Preset is Selected) ---
+if selected_preset == "Watching":
+    if st.sidebar.button("🔍 Scan & Add Top 10 Buy Candidates"):
+        with st.spinner("Scanning global ETF universe for top bull-market candidates..."):
+            all_current = set()
+            for t_str in st.session_state["preset_tickers"].values():
+                all_current.update([t.strip().upper() for t in t_str.split(",") if t.strip()])
+            
+            new_picks = discover_top_candidates(all_current, top_n=10)
+            if new_picks:
+                current_watching = [t.strip().upper() for t in st.session_state["preset_tickers"]["Watching"].split(",") if t.strip()]
+                updated_watching = list(dict.fromkeys(current_watching + new_picks))
+                st.session_state["preset_tickers"]["Watching"] = ", ".join(updated_watching)
+                st.session_state["ticker_text"] = st.session_state["preset_tickers"]["Watching"]
+                save_persistent_state(st.session_state["preset_tickers"])
+                st.sidebar.success(f"Added {len(new_picks)} top candidates to Watching!")
+                st.rerun()
+            else:
+                st.sidebar.warning("No new qualifying candidates found.")
 
 buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
 rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
