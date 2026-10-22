@@ -94,7 +94,7 @@ PRESET_CONFIGS = {
         "rationale": "Your active watchlist for monitoring custom setups.",
     },
     "Recommendations": {
-        "tickers": "",
+        "tickers": "SPY, QQQ, NVDA, AAPL, MSFT, AMZN, GOOGL, META, SMH, XLK",
         "buffer": 2.0,
         "rvol": 0.80,
         "min_atr": 0.50,
@@ -164,7 +164,6 @@ def load_persistent_state():
         if name not in data or not data[name].strip():
             data[name] = cfg["tickers"]
             
-    # Force sync new defaults if outdated on disk
     if "Covered Call ETFs" in data and "QQQI" not in data["Covered Call ETFs"]:
         data["Covered Call ETFs"] = PRESET_CONFIGS["Covered Call ETFs"]["tickers"]
         
@@ -207,15 +206,14 @@ def fetch_open_world_universe():
         "XLP", "XLY", "XLC", "XLB", "XLU", "XLRE", "IGV", "ITA", "XHB", 
         "XME", "XOP", "KRE", "SOXX", "XBI", "GLD", "SLV", "MTUM", "QUAL", 
         "IWF", "IWD", "DGRO", "VWO", "EFA", "NVDA", "AAPL", "MSFT", "AMZN", 
-        "GOOGL", "META", "TSLA", "SCHD", "JEPI", "QQQI", "JEPQ"
+        "GOOGL", "META", "TSLA", "SCHD", "JEPI", "QQQI", "JEPQ", "DJIA", "VEA"
     ]
 
-def discover_open_world_candidates(existing_tickers, top_n=10):
+def discover_open_world_candidates(top_n=10):
     live_universe = fetch_open_world_universe()
-    candidates = [t for t in live_universe if t not in existing_tickers]
     scored = []
     
-    for t in candidates:
+    for t in live_universe:
         try:
             df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
             df = clean_df_columns(df)
@@ -459,11 +457,7 @@ if selected_preset == "Recommendations":
     with col_scan:
         if st.button("🔍 Scan & Refresh", use_container_width=True, type="secondary"):
             with st.spinner("Executing Open-World Market Discovery..."):
-                all_current = set()
-                for t_str in st.session_state["preset_tickers"].values():
-                    all_current.update([t.strip().upper() for t in t_str.split(",") if t.strip()])
-                
-                new_picks = discover_open_world_candidates(all_current, top_n=10)
+                new_picks = discover_open_world_candidates(top_n=10)
                 if new_picks:
                     st.session_state["preset_tickers"]["Recommendations"] = ", ".join(new_picks)
                     save_persistent_state(st.session_state["preset_tickers"])
