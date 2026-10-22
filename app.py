@@ -221,6 +221,7 @@ def fetch_open_world_universe():
 def discover_open_world_candidates(top_n=10):
     live_universe = fetch_open_world_universe()
     scored = []
+    fallback_scored = []
     
     for t in live_universe:
         try:
@@ -262,20 +263,32 @@ def discover_open_world_candidates(top_n=10):
             sma50 = float(c.rolling(50).mean().iloc[-1])
             macd_hist = get_macd(c)
 
-            # Strict Accumulation Check for Discovery
+            score = ((price - p_sma200) / p_sma200) * max(0.5, rvol)
+
+            # Fallback pool: Any asset above 200 SMA with non-negative slope
+            if price > p_sma200 and slope_val != "DOWN":
+                fallback_scored.append((t, score))
+
+            # Strict Accumulation Check for Primary Discovery
             is_uptrend = (slope_val == "UP")
             above_buffer = (price > u_th)
             short_term_bullish = (price > ema20) and (ema20 > sma50) and (macd_hist > 0)
-            valid_volume_volatility = (rvol >= 0.80) and (atr_pct >= 0.50)
+            valid_volume_volatility = (rvol >= 0.70) and (atr_pct >= 0.40)
 
             if is_uptrend and above_buffer and short_term_bullish and valid_volume_volatility:
-                score = ((price - p_sma200) / p_sma200) * rvol
                 scored.append((t, score))
         except Exception:
             continue
             
     scored.sort(key=lambda x: x[1], reverse=True)
-    return [item[0] for item in scored[:top_n]]
+    picks = [item[0] for item in scored[:top_n]]
+    
+    # Tiered Fallback if strict filter yields nothing
+    if not picks and fallback_scored:
+        fallback_scored.sort(key=lambda x: x[1], reverse=True)
+        picks = [item[0] for item in fallback_scored[:top_n]]
+
+    return picks if picks else ["SPY", "QQQ", "NVDA", "SMH", "XLK", "AMZN", "MSFT", "IBIT"]
 
 def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_atr_threshold=0.50):
     results = []
