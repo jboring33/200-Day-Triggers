@@ -98,7 +98,7 @@ PRESET_CONFIGS = {
         "buffer": 2.0,
         "rvol": 0.80,
         "min_atr": 0.50,
-        "rationale": "Autonomous buy engine filtering strictly for active ACCUMULATE breakout candidates.",
+        "rationale": "Autonomous buy engine scanning strictly for verified ACCUMULATE breakout candidates.",
     },
     "Broad Market": {
         "tickers": "SPY, QQQ, DJIA, EMXC, VEA",
@@ -161,7 +161,7 @@ def load_persistent_state():
             pass
     
     for name, cfg in PRESET_CONFIGS.items():
-        if name not in data or not data[name].strip():
+        if name not in data:
             data[name] = cfg["tickers"]
             
     if "Covered Call ETFs" in data and "QQQI" not in data["Covered Call ETFs"]:
@@ -186,6 +186,14 @@ def get_atr(df, window=14):
     tr = pd.concat([h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
     return float(tr.rolling(window).mean().iloc[-1])
 
+def get_macd(close):
+    exp1 = close.ewm(span=12, adjust=False).mean()
+    exp2 = close.ewm(span=26, adjust=False).mean()
+    macd = exp1 - exp2
+    signal = macd.ewm(span=9, adjust=False).mean()
+    hist = macd - signal
+    return float(hist.iloc[-1])
+
 def get_asset_description(symbol):
     if symbol in ASSET_DESCRIPTIONS:
         return ASSET_DESCRIPTIONS[symbol]
@@ -207,7 +215,7 @@ def fetch_open_world_universe():
         "XME", "XOP", "KRE", "SOXX", "XBI", "GLD", "SLV", "MTUM", "QUAL", 
         "IWF", "IWD", "DGRO", "VWO", "EFA", "NVDA", "AAPL", "MSFT", "AMZN", 
         "GOOGL", "META", "TSLA", "SCHD", "JEPI", "QQQI", "JEPQ", "DJIA", "VEA",
-        "TLT", "HYG", "LQD", "SOXX", "XBI", "KRE", "XOP", "XME", "XHB"
+        "TLT", "HYG", "LQD", "IBIT", "FBTC", "IAUM"
     ]
 
 def discover_open_world_candidates(top_n=10):
@@ -242,26 +250,34 @@ def discover_open_world_candidates(top_n=10):
             sma200 = c.rolling(200).mean()
             p_sma200 = float(sma200.iloc[-1])
             prev_sma200 = float(sma200.iloc[-21])
-            
             sma_diff = ((p_sma200 - prev_sma200) / prev_sma200) * 100
-            slope = "UP" if sma_diff > 0.05 else ("DOWN" if sma_diff < -0.05 else "FLAT")
-            
+            slope_val = "UP" if sma_diff > 0.05 else ("DOWN" if sma_diff < -0.05 else "FLAT")
+
             atr = get_atr(df_clean)
             atr_pct = (atr / price) * 100
             eff_buf = max(0.02, (atr / price) * 1.5)
             u_th = p_sma200 * (1.0 + eff_buf)
-            pct_above = ((price - p_sma200) / p_sma200) * 100.0
 
-            # Stricter criteria: Must be above upper buffer, rising 200 SMA, and confirmed volume
-            if price > u_th and slope == "UP" and rvol >= 0.80 and atr_pct >= 0.50:
-                scored.append((t, pct_above))
+            ema20 = float(c.ewm(span=20, adjust=False).mean().iloc[-1])
+            sma50 = float(c.rolling(50).mean().iloc[-1])
+            macd_hist = get_macd(c)
+
+            # Strict Accumulation Check for Discovery
+            is_uptrend = (slope_val == "UP")
+            above_buffer = (price > u_th)
+            short_term_bullish = (price > ema20) and (ema20 > sma50) and (macd_hist > 0)
+            valid_volume_volatility = (rvol >= 0.80) and (atr_pct >= 0.50)
+
+            if is_uptrend and above_buffer and short_term_bullish and valid_volume_volatility:
+                score = ((price - p_sma200) / p_sma200) * rvol
+                scored.append((t, score))
         except Exception:
             continue
             
     scored.sort(key=lambda x: x[1], reverse=True)
     return [item[0] for item in scored[:top_n]]
 
-def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_atr_threshold=0.50, is_recommendations=False):
+def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_atr_threshold=0.50):
     results = []
     for t in tickers:
         try:
@@ -296,23 +312,12 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
 
             atr = get_atr(df_clean)
             atr_pct = (atr / price) * 100
-
-            if is_recommendations:
-                eff_buf = max(0.015, (atr / price) * 1.25)
-                rvol_threshold_val = 0.80
-                min_atr_val = 0.50
-                target_buffer_pct = 0.020
-            else:
-                eff_buf = max(default_buffer_pct, (atr / price) * 1.5)
-                rvol_threshold_val = rvol_threshold
-                min_atr_val = min_atr_threshold
-                target_buffer_pct = default_buffer_pct
+            eff_buf = max(default_buffer_pct, (atr / price) * 1.5)
 
             u_th = p_sma200 * (1.0 + eff_buf)
             l_th = p_sma200 * (1.0 - eff_buf)
 
             sma_diff = ((p_sma200 - prev_sma200) / prev_sma200) * 100
-            
             if sma_diff > 0.05:
                 slope_label, slope_val = "🟢 UP", "UP"
             elif sma_diff < -0.05:
@@ -321,14 +326,14 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
                 slope_label, slope_val = "⚪ FLAT", "FLAT"
 
             pct_sma200 = ((price - p_sma200) / p_sma200) * 100.0
-            rvol_ok = rvol >= rvol_threshold_val
-            atr_ok = atr_pct >= min_atr_val
+            rvol_ok = rvol >= rvol_threshold
+            atr_ok = atr_pct >= min_atr_threshold
 
             rvol_label = f"🟢 {rvol:.2f}x" if rvol_ok else f"🟡 {rvol:.2f}x"
             atr_label = f"🟢 {atr_pct:.2f}%" if atr_ok else f"🔴 {atr_pct:.2f}%"
             
             buf_pct_val = eff_buf * 100.0
-            target_pct_val = target_buffer_pct * 100.0
+            target_pct_val = default_buffer_pct * 100.0
             if buf_pct_val <= (target_pct_val * 1.25):
                 buffer_label = f"🟢 {buf_pct_val:.2f}%"
             elif buf_pct_val <= (target_pct_val * 1.75):
@@ -336,15 +341,26 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
             else:
                 buffer_label = f"🔴 {buf_pct_val:.2f}%"
 
-            if price > u_th and slope_val in ["UP", "FLAT"]:
-                if rvol_ok and atr_ok:
-                    status_action = "🟢 ACCUMULATE"
-                else:
-                    status_action = "🟢 HOLD"
-            elif price < l_th and slope_val == "DOWN":
-                status_action = "🔴 SELL / ROTATE"
+            # Short-term momentum & moving average evaluation
+            ema20 = float(c.ewm(span=20, adjust=False).mean().iloc[-1])
+            sma50 = float(c.rolling(50).mean().iloc[-1])
+            macd_hist = get_macd(c)
+
+            short_term_bullish = (price > ema20) and (ema20 > sma50) and (macd_hist > 0)
+
+            # Strict ACCUMULATE definition:
+            # 1. Price above upper noise buffer threshold
+            # 2. 200 SMA slope is strictly UP
+            # 3. RVOL and ATR criteria met
+            # 4. Short-term MAs (20 EMA / 50 SMA) and MACD histogram confirming upward slope
+            if price > u_th and slope_val == "UP" and rvol_ok and atr_ok and short_term_bullish:
+                status_action = "🟢 ACCUMULATE"
+            elif price > u_th and slope_val == "UP":
+                status_action = "🟢 HOLD"
             elif l_th <= price <= u_th:
                 status_action = "⚪ BUFFER ZONE"
+            elif price < l_th and slope_val == "DOWN":
+                status_action = "🔴 SELL / ROTATE"
             else:
                 status_action = "🟡 CAUTION"
 
@@ -376,7 +392,7 @@ if "preset_tickers" not in st.session_state:
     st.session_state["preset_tickers"] = load_persistent_state()
 else:
     for name, cfg in PRESET_CONFIGS.items():
-        if name not in st.session_state["preset_tickers"] or not st.session_state["preset_tickers"][name].strip():
+        if name not in st.session_state["preset_tickers"] or (name != "Recommendations" and not st.session_state["preset_tickers"][name].strip()):
             st.session_state["preset_tickers"][name] = cfg["tickers"]
 
 if "preset_radio" not in st.session_state or st.session_state["preset_radio"] not in PRESET_CONFIGS:
@@ -414,7 +430,7 @@ with st.sidebar:
         st.markdown("### **2. Special Mode: 'Recommendations'**")
         st.markdown("If you select the **Recommendations** preset, the app acts as an autonomous open-world discovery engine:")
         st.markdown("1. Click the **🔍 Scan & Refresh** button that appears on the left side of the ticker input box.")
-        st.markdown("2. The engine will scan liquid U.S. ETFs to find top-performing structural leaders currently trading above their rising 200-day moving averages.")
+        st.markdown("2. The engine scans liquid U.S. ETFs and strictly filters for assets exhibiting a rising 200 SMA slope, upper buffer breakout, confirmed RVOL/ATR, and positive short-term momentum (20 EMA > 50 SMA & MACD positive).")
         st.markdown("3. Once populated, click **🚀 Run Screener** to evaluate them.")
 
         st.markdown("---")
@@ -427,8 +443,8 @@ with st.sidebar:
         st.markdown("---")
         st.markdown("### **4. Status & Action Classification Matrix**")
         st.markdown("Primary status is determined strictly by absolute price position relative to the 200 SMA upper and lower noise buffer thresholds:")
-        st.markdown("* 🟢 **ACCUMULATE:** Price is above the Upper Threshold, 200 SMA Slope is **UP** or **FLAT**, and both **RVOL** and **ATR (%)** satisfy minimum parameters.")
-        st.markdown("* 🟢 **HOLD:** Price is above the Upper Threshold, 200 SMA Slope is **UP** or **FLAT**, but RVOL or ATR (%) falls below confirmation thresholds.")
+        st.markdown("* 🟢 **ACCUMULATE:** Price is above the Upper Threshold, 200 SMA Slope is **UP**, RVOL and ATR satisfy minimum parameters, and short-term MAs (20/50) + MACD confirm upward momentum.")
+        st.markdown("* 🟢 **HOLD:** Price is above the Upper Threshold and 200 SMA Slope is **UP**, but short-term volume or momentum indicators are unconfirmed.")
         st.markdown("* ⚪ **BUFFER ZONE:** Price is between the Lower and Upper Thresholds. Capital actions are held neutral to prevent whipsaws.")
         st.markdown("* 🟡 **CAUTION:** Price is outside the noise band, but diverges from the moving average slope trajectory.")
         st.markdown("* 🔴 **SELL / ROTATE:** Price is below the Lower Threshold and 200 SMA Slope is **DOWN**. Triggers risk mitigation and rotation into safe-harbor assets.")
@@ -478,12 +494,12 @@ if selected_preset == "Recommendations":
     col_scan, col_input = st.columns([1, 3])
     with col_scan:
         if st.button("🔍 Scan & Refresh", use_container_width=True, type="secondary"):
-            with st.spinner("Executing Autonomous Accumulation Discovery..."):
+            with st.spinner("Executing Strict Accumulation Discovery..."):
                 new_picks = discover_open_world_candidates(top_n=10)
                 if new_picks:
                     st.session_state["preset_tickers"]["Recommendations"] = ", ".join(new_picks)
                     save_persistent_state(st.session_state["preset_tickers"])
-                    st.success("Recommendations updated with top ACCUMULATE candidates!")
+                    st.success("Recommendations populated with top ACCUMULATE candidates!")
                     st.rerun()
                 else:
                     st.warning("No qualifying accumulation candidates found in current market scan.")
@@ -523,7 +539,6 @@ if run_screener:
                 default_buffer_pct=buffer_setting / 100.0,
                 rvol_threshold=rvol_setting,
                 min_atr_threshold=min_atr_setting,
-                is_recommendations=(selected_preset == "Recommendations"),
             )
         if not df_results.empty:
             st.subheader("📋 Unified Portfolio Action & Trend Matrix")
