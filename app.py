@@ -87,11 +87,11 @@ ASSET_DESCRIPTIONS = {
 
 PRESET_CONFIGS = {
     "Watching": {
-        "tickers": "SPY, QQQ, NVDA, EMXC, VGT",
+        "tickers": "",
         "buffer": 2.0,
         "rvol": 1.00,
         "min_atr": 0.00,
-        "rationale": "Your active watchlist for monitoring custom setups.",
+        "rationale": "Your blank personal active watchlist for monitoring custom setups.",
     },
     "Recommendations": {
         "tickers": "",
@@ -115,7 +115,7 @@ PRESET_CONFIGS = {
         "rationale": "High-beta tech mega-caps requiring wider noise filters.",
     },
     "Sector ETFs": {
-        "tickers": "XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU, VGT",
+        "tickers": "XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU",
         "buffer": 2.0,
         "rvol": 0.85,
         "min_atr": 0.50,
