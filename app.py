@@ -265,11 +265,9 @@ def discover_open_world_candidates(top_n=10):
 
             score = ((price - p_sma200) / p_sma200) * max(0.5, rvol)
 
-            # Fallback pool: Any asset above 200 SMA with non-negative slope
             if price > p_sma200 and slope_val != "DOWN":
                 fallback_scored.append((t, score))
 
-            # Strict Accumulation Check for Primary Discovery
             is_uptrend = (slope_val == "UP")
             above_buffer = (price > u_th)
             short_term_bullish = (price > ema20) and (ema20 > sma50) and (macd_hist > 0)
@@ -283,7 +281,6 @@ def discover_open_world_candidates(top_n=10):
     scored.sort(key=lambda x: x[1], reverse=True)
     picks = [item[0] for item in scored[:top_n]]
     
-    # Tiered Fallback if strict filter yields nothing
     if not picks and fallback_scored:
         fallback_scored.sort(key=lambda x: x[1], reverse=True)
         picks = [item[0] for item in fallback_scored[:top_n]]
@@ -354,18 +351,12 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
             else:
                 buffer_label = f"🔴 {buf_pct_val:.2f}%"
 
-            # Short-term momentum & moving average evaluation
             ema20 = float(c.ewm(span=20, adjust=False).mean().iloc[-1])
             sma50 = float(c.rolling(50).mean().iloc[-1])
             macd_hist = get_macd(c)
 
             short_term_bullish = (price > ema20) and (ema20 > sma50) and (macd_hist > 0)
 
-            # Strict ACCUMULATE definition:
-            # 1. Price above upper noise buffer threshold
-            # 2. 200 SMA slope is strictly UP
-            # 3. RVOL and ATR criteria met
-            # 4. Short-term MAs (20 EMA / 50 SMA) and MACD histogram confirming upward slope
             if price > u_th and slope_val == "UP" and rvol_ok and atr_ok and short_term_bullish:
                 status_action = "🟢 ACCUMULATE"
             elif price > u_th and slope_val == "UP":
@@ -427,6 +418,8 @@ with st.sidebar:
                 pass
         for name, cfg in PRESET_CONFIGS.items():
             st.session_state["preset_tickers"][name] = cfg["tickers"]
+            if f"ticker_box_{name}" in st.session_state:
+                st.session_state[f"ticker_box_{name}"] = cfg["tickers"]
         st.success("Watchlists reset to defaults!")
         st.rerun()
 
@@ -500,7 +493,7 @@ selected_preset = st.radio(
     label_visibility="collapsed"
 )
 
-# --- Ticker Input Row with Unique Preset Keys to Prevent Blank Screens ---
+# --- Ticker Input Row with State Synchronization ---
 current_tickers_val = st.session_state["preset_tickers"].get(selected_preset, "")
 
 if selected_preset == "Recommendations":
@@ -510,7 +503,9 @@ if selected_preset == "Recommendations":
             with st.spinner("Executing Strict Accumulation Discovery..."):
                 new_picks = discover_open_world_candidates(top_n=10)
                 if new_picks:
-                    st.session_state["preset_tickers"]["Recommendations"] = ", ".join(new_picks)
+                    picks_str = ", ".join(new_picks)
+                    st.session_state["preset_tickers"]["Recommendations"] = picks_str
+                    st.session_state["ticker_box_Recommendations"] = picks_str
                     save_persistent_state(st.session_state["preset_tickers"])
                     st.success("Recommendations populated with top ACCUMULATE candidates!")
                     st.rerun()
@@ -534,6 +529,7 @@ else:
 # Instantly sync and persist changes
 if ticker_input != current_tickers_val:
     st.session_state["preset_tickers"][selected_preset] = ticker_input
+    st.session_state[f"ticker_box_{selected_preset}"] = ticker_input
     save_persistent_state(st.session_state["preset_tickers"])
     st.query_params["preset"] = selected_preset
     st.query_params["tickers"] = ticker_input
