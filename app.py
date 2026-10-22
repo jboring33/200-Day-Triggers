@@ -94,11 +94,11 @@ PRESET_CONFIGS = {
         "rationale": "Your active watchlist for monitoring custom setups.",
     },
     "Recommendations": {
-        "tickers": "SPY, QQQ, NVDA, AAPL, MSFT, AMZN, GOOGL, META, SMH, XLK",
+        "tickers": "",
         "buffer": 2.0,
         "rvol": 0.80,
         "min_atr": 0.50,
-        "rationale": "Open-world discovery engine dynamically pulling top market leaders.",
+        "rationale": "Autonomous buy engine filtering strictly for active ACCUMULATE breakout candidates.",
     },
     "Broad Market": {
         "tickers": "SPY, QQQ, DJIA, EMXC, VEA",
@@ -206,7 +206,8 @@ def fetch_open_world_universe():
         "XLP", "XLY", "XLC", "XLB", "XLU", "XLRE", "IGV", "ITA", "XHB", 
         "XME", "XOP", "KRE", "SOXX", "XBI", "GLD", "SLV", "MTUM", "QUAL", 
         "IWF", "IWD", "DGRO", "VWO", "EFA", "NVDA", "AAPL", "MSFT", "AMZN", 
-        "GOOGL", "META", "TSLA", "SCHD", "JEPI", "QQQI", "JEPQ", "DJIA", "VEA"
+        "GOOGL", "META", "TSLA", "SCHD", "JEPI", "QQQI", "JEPQ", "DJIA", "VEA",
+        "TLT", "HYG", "LQD", "SOXX", "XBI", "KRE", "XOP", "XME", "XHB"
     ]
 
 def discover_open_world_candidates(top_n=10):
@@ -219,19 +220,40 @@ def discover_open_world_candidates(top_n=10):
             df = clean_df_columns(df)
             if df.empty or len(df) < 225:
                 continue
+            
             c = df["Close"].squeeze()
-            if isinstance(c, pd.DataFrame):
-                c = c.iloc[:, 0]
+            v = df["Volume"].squeeze()
+            h = df["High"].squeeze()
+            l = df["Low"].squeeze()
+            o = df["Open"].squeeze()
+
+            if isinstance(c, pd.DataFrame): c = c.iloc[:, 0]
+            if isinstance(v, pd.DataFrame): v = v.iloc[:, 0]
+            if isinstance(h, pd.DataFrame): h = h.iloc[:, 0]
+            if isinstance(l, pd.DataFrame): l = l.iloc[:, 0]
+            if isinstance(o, pd.DataFrame): o = o.iloc[:, 0]
+
+            df_clean = pd.DataFrame({"High": h, "Low": l, "Close": c, "Open": o})
             price = float(c.iloc[-1])
+            vol = float(v.iloc[-1])
+            v_sma20 = float(v.rolling(20).mean().iloc[-1])
+            rvol = vol / v_sma20 if v_sma20 > 0 else 1.0
+
             sma200 = c.rolling(200).mean()
             p_sma200 = float(sma200.iloc[-1])
             prev_sma200 = float(sma200.iloc[-21])
             
             sma_diff = ((p_sma200 - prev_sma200) / prev_sma200) * 100
             slope = "UP" if sma_diff > 0.05 else ("DOWN" if sma_diff < -0.05 else "FLAT")
-            pct_above = ((price - p_sma200) / p_sma200) * 100.0
             
-            if price > p_sma200 and slope == "UP":
+            atr = get_atr(df_clean)
+            atr_pct = (atr / price) * 100
+            eff_buf = max(0.02, (atr / price) * 1.5)
+            u_th = p_sma200 * (1.0 + eff_buf)
+            pct_above = ((price - p_sma200) / p_sma200) * 100.0
+
+            # Stricter criteria: Must be above upper buffer, rising 200 SMA, and confirmed volume
+            if price > u_th and slope == "UP" and rvol >= 0.80 and atr_pct >= 0.50:
                 scored.append((t, pct_above))
         except Exception:
             continue
@@ -456,15 +478,15 @@ if selected_preset == "Recommendations":
     col_scan, col_input = st.columns([1, 3])
     with col_scan:
         if st.button("🔍 Scan & Refresh", use_container_width=True, type="secondary"):
-            with st.spinner("Executing Open-World Market Discovery..."):
+            with st.spinner("Executing Autonomous Accumulation Discovery..."):
                 new_picks = discover_open_world_candidates(top_n=10)
                 if new_picks:
                     st.session_state["preset_tickers"]["Recommendations"] = ", ".join(new_picks)
                     save_persistent_state(st.session_state["preset_tickers"])
-                    st.success("Recommendations updated!")
+                    st.success("Recommendations updated with top ACCUMULATE candidates!")
                     st.rerun()
                 else:
-                    st.warning("No new qualifying candidates found.")
+                    st.warning("No qualifying accumulation candidates found in current market scan.")
     with col_input:
         ticker_input = st.text_input(
             "Watchlist Tickers (Editable):",
@@ -534,6 +556,6 @@ if run_screener:
             )
 else:
     if selected_preset == "Recommendations":
-        st.info("💡 **Workflow Notice**: Click **🔍 Scan & Refresh** first to fetch live open-world market leaders, then click **🚀 Run Screener** to evaluate them.")
+        st.info("💡 **Workflow Notice**: Click **🔍 Scan & Refresh** first to dynamically scan and load active **ACCUMULATE** breakout candidates, then click **🚀 Run Screener** to evaluate them.")
     else:
         st.info("💡 Enter your tickers above and click **🚀 Run Screener** to generate your consolidated portfolio table.")
