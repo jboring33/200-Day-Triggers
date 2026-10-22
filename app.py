@@ -437,7 +437,7 @@ selected_preset = st.radio(
     label_visibility="collapsed"
 )
 
-# --- Ticker Input Row ---
+# --- Ticker Input Row with Direct State Persistence ---
 if selected_preset == "Recommendations":
     col_scan, col_input = st.columns([1, 3])
     with col_scan:
@@ -456,35 +456,31 @@ if selected_preset == "Recommendations":
                 else:
                     st.warning("No new qualifying candidates found.")
     with col_input:
-        def on_ticker_change():
-            val = st.session_state[f"text_area_{selected_preset}"]
-            st.session_state["preset_tickers"][selected_preset] = val
-            save_persistent_state(st.session_state["preset_tickers"])
-            st.query_params["preset"] = selected_preset
-            st.query_params["tickers"] = val
-
+        current_tickers_val = st.session_state["preset_tickers"].get(selected_preset, "")
         ticker_input = st.text_input(
             "Watchlist Tickers (Editable):",
-            value=st.session_state["preset_tickers"][selected_preset],
-            key=f"text_area_{selected_preset}",
-            on_change=on_ticker_change,
-            help="Edit tickers freely. Edits are saved to server disk and survive app sleep cycles.",
+            value=current_tickers_val,
+            key="shared_ticker_input_box",
+            help="Edit tickers freely. Changes are saved instantly.",
         )
+        if ticker_input != current_tickers_val:
+            st.session_state["preset_tickers"][selected_preset] = ticker_input
+            save_persistent_state(st.session_state["preset_tickers"])
+            st.query_params["preset"] = selected_preset
+            st.query_params["tickers"] = ticker_input
 else:
-    def on_ticker_change():
-        val = st.session_state[f"text_area_{selected_preset}"]
-        st.session_state["preset_tickers"][selected_preset] = val
-        save_persistent_state(st.session_state["preset_tickers"])
-        st.query_params["preset"] = selected_preset
-        st.query_params["tickers"] = val
-
+    current_tickers_val = st.session_state["preset_tickers"].get(selected_preset, "")
     ticker_input = st.text_input(
         "Watchlist Tickers (Editable):",
-        value=st.session_state["preset_tickers"][selected_preset],
-        key=f"text_area_{selected_preset}",
-        on_change=on_ticker_change,
-        help="Edit tickers freely. Edits are saved to server disk and survive app sleep cycles.",
+        value=current_tickers_val,
+        key="shared_ticker_input_box",
+        help="Edit tickers freely. Changes are saved instantly.",
     )
+    if ticker_input != current_tickers_val:
+        st.session_state["preset_tickers"][selected_preset] = ticker_input
+        save_persistent_state(st.session_state["preset_tickers"])
+        st.query_params["preset"] = selected_preset
+        st.query_params["tickers"] = ticker_input
 
 # --- Action Button directly below Watchlist Ticker entry box ---
 run_screener = st.button("🚀 Run Screener", type="primary", use_container_width=True)
