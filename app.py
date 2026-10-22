@@ -28,6 +28,8 @@ ASSET_DESCRIPTIONS = {
     "GOOGL": "Alphabet Inc. (Search/AI)",
     "META": "Meta Platforms Inc. (Social Media/AI)",
     "TSLA": "Tesla Inc. (EV/Clean Energy)",
+    "BRK-B": "Berkshire Hathaway Inc. Class B",
+    "BRK.B": "Berkshire Hathaway Inc. Class B",
     "XLC": "Communication Services Sector ETF",
     "XLY": "Consumer Discretionary Sector ETF",
     "XLP": "Consumer Staples Sector ETF",
@@ -159,7 +161,7 @@ def load_persistent_state():
             pass
     
     for name, cfg in PRESET_CONFIGS.items():
-        if name not in data or not data[name].strip():
+        if name not in data or not data[name].strip() or data[name].strip() == "BRK-B":
             data[name] = cfg["tickers"]
     return data
 
@@ -371,6 +373,19 @@ def on_preset_change():
 # --- Sidebar Configuration (Read Me & Screener Parameters) ---
 
 with st.sidebar:
+    if st.button("🔄 Reset All Watchlists to Defaults", use_container_width=True, type="secondary"):
+        if os.path.exists(STATE_FILE):
+            try:
+                os.remove(STATE_FILE)
+            except Exception:
+                pass
+        for name, cfg in PRESET_CONFIGS.items():
+            st.session_state["preset_tickers"][name] = cfg["tickers"]
+        st.success("Watchlists reset to defaults!")
+        st.rerun()
+
+    st.divider()
+
     with st.expander("📖 **Read Me**", expanded=False):
         st.markdown("### **1. Quick Start Guide**")
         st.markdown("1. **Select a Watchlist Preset**: Use the horizontal preset buttons at the top of the main panel to choose a curated asset pool.")
