@@ -161,8 +161,13 @@ def load_persistent_state():
             pass
     
     for name, cfg in PRESET_CONFIGS.items():
-        if name not in data or not data[name].strip() or data[name].strip() == "BRK-B":
+        if name not in data or not data[name].strip():
             data[name] = cfg["tickers"]
+            
+    # Force sync new defaults if outdated on disk
+    if "Covered Call ETFs" in data and "QQQI" not in data["Covered Call ETFs"]:
+        data["Covered Call ETFs"] = PRESET_CONFIGS["Covered Call ETFs"]["tickers"]
+        
     return data
 
 def save_persistent_state(state_dict):
@@ -171,6 +176,11 @@ def save_persistent_state(state_dict):
             json.dump(state_dict, f, indent=4)
     except Exception:
         pass
+
+def clean_df_columns(df):
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    return df
 
 def get_atr(df, window=14):
     h, l, c = df["High"], df["Low"], df["Close"]
@@ -192,35 +202,12 @@ def get_asset_description(symbol):
 
 @st.cache_data(ttl=3600)
 def fetch_open_world_universe():
-    try:
-        screener = yf.Screener()
-        screener.set_body({
-            "size": 50,
-            "offset": 0,
-            "sortField": "dayvolume",
-            "sortType": "DESC",
-            "quoteType": "ETF",
-            "query": {
-                "operator": "AND",
-                "operands": [
-                    {"operator": "GT", "operands": ["dayvolume", 500000]},
-                    {"operator": "EQ", "operands": ["region", "us"]}
-                ]
-            }
-        })
-        res = screener.response
-        quotes = res.get("quotes", [])
-        symbols = [q["symbol"] for q in quotes if "symbol" in q]
-        if symbols:
-            return symbols
-    except Exception:
-        pass
-    
     return [
         "SPY", "QQQ", "IWM", "SMH", "XLF", "XLE", "XLK", "XLV", "XLI", 
         "XLP", "XLY", "XLC", "XLB", "XLU", "XLRE", "IGV", "ITA", "XHB", 
         "XME", "XOP", "KRE", "SOXX", "XBI", "GLD", "SLV", "MTUM", "QUAL", 
-        "IWF", "IWD", "DGRO", "VWO", "EFA"
+        "IWF", "IWD", "DGRO", "VWO", "EFA", "NVDA", "AAPL", "MSFT", "AMZN", 
+        "GOOGL", "META", "TSLA", "SCHD", "JEPI", "QQQI", "JEPQ"
     ]
 
 def discover_open_world_candidates(existing_tickers, top_n=10):
@@ -231,9 +218,12 @@ def discover_open_world_candidates(existing_tickers, top_n=10):
     for t in candidates:
         try:
             df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
+            df = clean_df_columns(df)
             if df.empty or len(df) < 225:
                 continue
             c = df["Close"].squeeze()
+            if isinstance(c, pd.DataFrame):
+                c = c.iloc[:, 0]
             price = float(c.iloc[-1])
             sma200 = c.rolling(200).mean()
             p_sma200 = float(sma200.iloc[-1])
@@ -257,6 +247,7 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
         try:
             description = get_asset_description(t)
             df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
+            df = clean_df_columns(df)
             if df.empty or len(df) < 225:
                 continue
 
@@ -265,6 +256,12 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
             l = df["Low"].squeeze()
             o = df["Open"].squeeze()
             v = df["Volume"].squeeze()
+
+            if isinstance(c, pd.DataFrame): c = c.iloc[:, 0]
+            if isinstance(h, pd.DataFrame): h = h.iloc[:, 0]
+            if isinstance(l, pd.DataFrame): l = l.iloc[:, 0]
+            if isinstance(o, pd.DataFrame): o = o.iloc[:, 0]
+            if isinstance(v, pd.DataFrame): v = v.iloc[:, 0]
 
             df_clean = pd.DataFrame({"High": h, "Low": l, "Close": c, "Open": o})
             price = float(c.iloc[-1])
