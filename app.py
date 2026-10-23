@@ -356,6 +356,7 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
             macd_hist = get_macd(c)
 
             short_term_bullish = (price > ema20) and (ema20 > sma50) and (macd_hist > 0)
+            short_term_bearish = (price < ema20) and (ema20 < sma50) and (macd_hist < 0)
 
             if price > u_th and slope_val == "UP" and rvol_ok and atr_ok and short_term_bullish:
                 status_action = "🟢 ACCUMULATE"
@@ -363,6 +364,8 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
                 status_action = "🟢 HOLD"
             elif l_th <= price <= u_th:
                 status_action = "⚪ BUFFER ZONE"
+            elif price < l_th and short_term_bearish:
+                status_action = "🟡 EARLY WARNING (TRIM)"
             elif price < l_th and slope_val == "DOWN":
                 status_action = "🔴 SELL / ROTATE"
             else:
@@ -452,6 +455,7 @@ with st.sidebar:
         st.markdown("* 🟢 **ACCUMULATE:** Price is above the Upper Threshold, 200 SMA Slope is **UP**, RVOL and ATR satisfy minimum parameters, and short-term MAs (20/50) + MACD confirm upward momentum.")
         st.markdown("* 🟢 **HOLD:** Price is above the Upper Threshold and 200 SMA Slope is **UP**, but short-term volume or momentum indicators are unconfirmed.")
         st.markdown("* ⚪ **BUFFER ZONE:** Price is between the Lower and Upper Thresholds. Capital actions are held neutral to prevent whipsaws.")
+        st.markdown("* 🟡 **EARLY WARNING (TRIM):** Price slips below the Lower Threshold while short-term momentum (20 EMA < 50 SMA and MACD negative) confirms distribution.")
         st.markdown("* 🟡 **CAUTION:** Price is outside the noise band, but diverges from the moving average slope trajectory.")
         st.markdown("* 🔴 **SELL / ROTATE:** Price is below the Lower Threshold and 200 SMA Slope is **DOWN**. Triggers risk mitigation and rotation into safe-harbor assets.")
 
