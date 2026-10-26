@@ -355,6 +355,8 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
             sma50 = float(c.rolling(50).mean().iloc[-1])
             macd_hist = get_macd(c)
 
+            macd_label = "🟢 Bullish" if macd_hist > 0 else "🔴 Bearish"
+
             short_term_bullish = (price > ema20) and (ema20 > sma50) and (macd_hist > 0)
             short_term_bearish = (price < ema20) and (ema20 < sma50) and (macd_hist < 0)
 
@@ -379,9 +381,12 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
                 "200 SMA": round(p_sma200, 2),
                 "% vs 200 SMA": f"{pct_sma200:+.2f}%",
                 "200 SMA Slope": slope_label,
+                "20 EMA": round(ema20, 2),
+                "50 SMA": round(sma50, 2),
+                "MACD Trend": macd_label,
                 "Buffer (%)": buffer_label,
-                "RVOL": rvol_label,
-                "ATR (%)": atr_label,
+                "Inst. Vol (RVOL)": rvol_label,
+                "Volatility (ATR %)": atr_label,
             })
         except Exception as e:
             st.error(f"Error processing {t}: {str(e)}")
@@ -410,6 +415,16 @@ def on_preset_change():
     st.query_params["preset"] = sel
     st.query_params["tickers"] = st.session_state["preset_tickers"][sel]
 
+def on_text_input_change():
+    sel = st.session_state["preset_radio"]
+    key = f"ticker_box_{sel}"
+    if key in st.session_state:
+        val = st.session_state[key]
+        st.session_state["preset_tickers"][sel] = val
+        save_persistent_state(st.session_state["preset_tickers"])
+        st.query_params["preset"] = sel
+        st.query_params["tickers"] = val
+
 # --- Sidebar Configuration (Read Me & Screener Parameters) ---
 
 with st.sidebar:
@@ -429,29 +444,32 @@ with st.sidebar:
     st.divider()
 
     with st.expander("📖 **Read Me**", expanded=False):
-        st.markdown("### **1. Quick Start Guide**")
+        st.markdown("### **1. Active Preset Rationale**")
+        active_preset_name = st.session_state.get("preset_radio", "Watching")
+        current_rationale = PRESET_CONFIGS.get(active_preset_name, {}).get("rationale", "No rationale defined.")
+        st.markdown(f"> **{active_preset_name}**: {current_rationale}")
+
+        st.markdown("---")
+        st.markdown("### **2. All Preset Rationales**")
+        for p_name, p_cfg in PRESET_CONFIGS.items():
+            st.markdown(f"* **{p_name}**: {p_cfg['rationale']}")
+
+        st.markdown("---")
+        st.markdown("### **3. Quick Start Guide**")
         st.markdown("1. **Select a Watchlist Preset**: Use the horizontal preset buttons at the top of the main panel to choose a curated asset pool.")
-        st.markdown("2. **Customize Tickers**: The text box below the preset buttons displays active tickers. Add or remove comma-separated stock or ETF symbols freely. All changes are saved automatically.")
+        st.markdown("2. **Customize Tickers**: The text box below displays active tickers. Add or remove comma-separated stock or ETF symbols freely. Changes are saved automatically and persist across app reloads/sleep states.")
         st.markdown("3. **Run the Screener**: Click the **🚀 Run Screener** button directly below the ticker input box to analyze secular trends.")
         st.markdown("4. **Fine-Tune Parameters (Optional)**: Adjust core thresholds like the base buffer noise filter, minimum RVOL, or minimum ATR below.")
 
         st.markdown("---")
-        st.markdown("### **2. Special Mode: 'Recommendations'**")
-        st.markdown("If you select the **Recommendations** preset, the app acts as an autonomous open-world discovery engine:")
-        st.markdown("1. Click the **🔍 Scan & Refresh** button that appears on the left side of the ticker input box.")
-        st.markdown("2. The engine scans liquid U.S. ETFs and strictly filters for assets exhibiting a rising 200 SMA slope, upper buffer breakout, confirmed RVOL/ATR, and positive short-term momentum (20 EMA > 50 SMA & MACD positive).")
-        st.markdown("3. Once populated, click **🚀 Run Screener** to evaluate them.")
-
-        st.markdown("---")
-        st.markdown("### **3. Core Architectural Concepts**")
+        st.markdown("### **4. Core Architectural Concepts**")
         st.markdown("* **200-Day Simple Moving Average (SMA):** The institutional baseline for macro trend-following (~10 months of price history). Defines the secular bull/bear boundary.")
         st.markdown("* **1-Month Slope Lookback (21 Trading Days):** Measures the directional trajectory of the 200 SMA over a full calendar month to prevent false trend reversals.")
         st.markdown("* **Noise Buffer (±%):** A customizable percentage band built around the 200 SMA (dynamically scaled using ATR) to eliminate whipsaws during minor consolidations.")
-        st.markdown("* **Relative Volume (RVOL):** Compares trading volume against the asset's 20-day average to ensure institutional participation.")
+        st.markdown("* **Institutional Volume & Volatility Confirmation:** Measured via **Inst. Vol (RVOL)** (comparing trading volume against the 20-day average) and **Volatility (ATR %)** to ensure genuine market participation.")
 
         st.markdown("---")
-        st.markdown("### **4. Status & Action Classification Matrix**")
-        st.markdown("Primary status is determined strictly by absolute price position relative to the 200 SMA upper and lower noise buffer thresholds:")
+        st.markdown("### **5. Status & Action Classification Matrix**")
         st.markdown("* 🟢 **ACCUMULATE:** Price is above the Upper Threshold, 200 SMA Slope is **UP**, RVOL and ATR satisfy minimum parameters, and short-term MAs (20/50) + MACD confirm upward momentum.")
         st.markdown("* 🟢 **HOLD:** Price is above the Upper Threshold and 200 SMA Slope is **UP**, but short-term volume or momentum indicators are unconfirmed.")
         st.markdown("* ⚪ **BUFFER ZONE:** Price is between the Lower and Upper Thresholds. Capital actions are held neutral to prevent whipsaws.")
@@ -460,11 +478,11 @@ with st.sidebar:
         st.markdown("* 🔴 **SELL / ROTATE:** Price is below the Lower Threshold and 200 SMA Slope is **DOWN**. Triggers risk mitigation and rotation into safe-harbor assets.")
 
         st.markdown("---")
-        st.markdown("### **5. Indicator Visual Badging Logic**")
+        st.markdown("### **6. Indicator Visual Badging Logic**")
         st.markdown("* **200 SMA Slope:** 🟢 **UP** (> +0.05%), ⚪ **FLAT** (-0.05% to +0.05%), 🔴 **DOWN** (< -0.05%).")
         st.markdown("* **Buffer (%):** 🟢 **Green** if effective buffer <= 1.25x target baseline; 🟡 **Yellow** if <= 1.75x; 🔴 **Red** if wider than 1.75x.")
-        st.markdown("* **RVOL:** 🟢 **Green** if >= minimum threshold; 🟡 **Yellow** if below.")
-        st.markdown("* **ATR (%):** 🟢 **Green** if >= minimum threshold; 🔴 **Red** if below.")
+        st.markdown("* **Inst. Vol (RVOL):** 🟢 **Green** if >= minimum threshold; 🟡 **Yellow** if below.")
+        st.markdown("* **Volatility (ATR %):** 🟢 **Green** if >= minimum threshold; 🔴 **Red** if below.")
 
     st.header("Screener Parameters")
     st.divider()
@@ -497,7 +515,7 @@ selected_preset = st.radio(
     label_visibility="collapsed"
 )
 
-# --- Ticker Input Row with State Synchronization ---
+# --- Ticker Input Row with State Synchronization & Immediate Callback Persistence ---
 current_tickers_val = st.session_state["preset_tickers"].get(selected_preset, "")
 
 if selected_preset == "Recommendations":
@@ -520,17 +538,19 @@ if selected_preset == "Recommendations":
             "Watchlist Tickers (Editable):",
             value=current_tickers_val,
             key=f"ticker_box_{selected_preset}",
-            help="Edit tickers freely. Changes are saved instantly.",
+            on_change=on_text_input_change,
+            help="Edit tickers freely. Changes are saved instantly and persist across sessions.",
         )
 else:
     ticker_input = st.text_input(
         "Watchlist Tickers (Editable):",
         value=current_tickers_val,
         key=f"ticker_box_{selected_preset}",
-        help="Edit tickers freely. Changes are saved instantly.",
+        on_change=on_text_input_change,
+        help="Edit tickers freely. Changes are saved instantly and persist across sessions.",
     )
 
-# Instantly sync and persist changes
+# Sync fallback if changed directly
 if ticker_input != current_tickers_val:
     st.session_state["preset_tickers"][selected_preset] = ticker_input
     st.session_state[f"ticker_box_{selected_preset}"] = ticker_input
