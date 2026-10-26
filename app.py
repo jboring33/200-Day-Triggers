@@ -80,77 +80,6 @@ def get_asset_description(symbol):
         pass
     return f"US Listed Asset ({symbol})"
 
-@st.cache_data(ttl=3600)
-def fetch_open_world_universe():
-    return [
-        "SPY", "QQQ", "IWM", "SMH", "XLF", "XLE", "XLK", "XLV", "XLI", 
-        "XLP", "XLY", "XLC", "XLB", "XLU", "XLRE", "IGV", "ITA", "XHB", 
-        "XME", "XOP", "KRE", "SOXX", "XBI", "GLD", "SLV", "MTUM", "QUAL", 
-        "IWF", "IWD", "DGRO", "VWO", "EFA", "NVDA", "AAPL", "MSFT", "AMZN", 
-        "GOOGL", "META", "TSLA", "SCHD", "JEPI", "QQQI", "SPYI", "JEPQ", "DJIA", "VEA",
-        "TLT", "HYG", "LQD", "IBIT", "FBTC", "IAUM"
-    ]
-
-def discover_open_world_candidates(top_n=10, buffer_pct=0.02, rvol_th=0.80, atr_th=0.50):
-    live_universe = fetch_open_world_universe()
-    scored = []
-    
-    for t in live_universe:
-        try:
-            df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
-            df = clean_df_columns(df)
-            if df.empty or len(df) < 60:
-                continue
-            
-            c = df["Close"].squeeze()
-            v = df["Volume"].squeeze()
-            h = df["High"].squeeze()
-            l = df["Low"].squeeze()
-            o = df["Open"].squeeze()
-
-            if isinstance(c, pd.DataFrame): c = c.iloc[:, 0]
-            if isinstance(v, pd.DataFrame): v = v.iloc[:, 0]
-            if isinstance(h, pd.DataFrame): h = h.iloc[:, 0]
-            if isinstance(l, pd.DataFrame): l = l.iloc[:, 0]
-            if isinstance(o, pd.DataFrame): o = o.iloc[:, 0]
-
-            df_clean = pd.DataFrame({"High": h, "Low": l, "Close": c, "Open": o})
-            price = float(c.iloc[-1])
-            vol = float(v.iloc[-1])
-            v_sma20 = float(v.rolling(20).mean().iloc[-1]) if len(v) >= 20 else float(v.mean())
-            rvol = vol / v_sma20 if v_sma20 > 0 else 1.0
-
-            baseline_series = c.rolling(200).mean() if len(c) >= 200 else c.rolling(min(50, len(c)-10)).mean()
-            p_baseline = float(baseline_series.iloc[-1])
-            prev_baseline = float(baseline_series.iloc[-21]) if len(baseline_series) >= 21 else p_baseline
-            sma_diff = ((p_baseline - prev_baseline) / prev_baseline) * 100
-            slope_val = "UP" if sma_diff > 0.05 else ("DOWN" if sma_diff < -0.05 else "FLAT")
-
-            atr = get_atr(df_clean)
-            atr_pct = (atr / price) * 100
-            eff_buf = max(buffer_pct, (atr / price) * 1.5)
-            u_th = p_baseline * (1.0 + eff_buf)
-
-            ema20_s = c.ewm(span=20, adjust=False).mean()
-            sma50_s = c.rolling(50).mean()
-            ema20 = float(ema20_s.iloc[-1]) if len(c) >= 20 else price
-            sma50 = float(sma50_s.iloc[-1]) if len(c) >= 50 else p_baseline
-            macd_hist = get_macd(c) if len(c) >= 26 else 0.0
-
-            rvol_ok = rvol >= rvol_th
-            atr_ok = atr_pct >= atr_th
-            short_term_bullish = (price >= ema20) and (macd_hist >= -0.01)
-
-            if price > u_th and slope_val in ["UP", "FLAT"] and rvol_ok and atr_ok and short_term_bullish:
-                score = ((price - p_baseline) / p_baseline) * rvol
-                scored.append((t, score))
-        except Exception:
-            continue
-            
-    scored.sort(key=lambda x: x[1], reverse=True)
-    picks = [item[0] for item in scored[:top_n]]
-    return picks
-
 def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_atr_threshold=0.50):
     results = []
     for t in tickers:
@@ -227,6 +156,7 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
 
             short_term_bullish = (price >= ema20_curr) and (macd_hist >= -0.01)
 
+            # Unified Universal Evaluation Matrix
             if price > u_th and slope_val in ["UP", "FLAT"] and rvol_ok and atr_ok and short_term_bullish:
                 status_action = "🟢 ACCUMULATE"
             elif price > u_th and slope_val in ["UP", "FLAT"]:
@@ -272,7 +202,7 @@ if "preset_tickers" not in st.session_state:
     st.session_state["preset_tickers"] = load_persistent_state()
 else:
     for name, cfg in PRESET_CONFIGS.items():
-        if name not in st.session_state["preset_tickers"] or (name != "Recommendations" and not st.session_state["preset_tickers"][name].strip()):
+        if name not in st.session_state["preset_tickers"] or not st.session_state["preset_tickers"][name].strip():
             st.session_state["preset_tickers"][name] = cfg["tickers"]
 
 if "preset_radio" not in st.session_state or st.session_state["preset_radio"] not in PRESET_CONFIGS:
@@ -343,51 +273,12 @@ selected_preset = st.radio(
 
 current_tickers_val = st.session_state["preset_tickers"].get(selected_preset, "")
 
-if selected_preset == "Recommendations":
-    col_scan, col_input = st.columns([1, 3])
-    with col_scan:
-        if st.button("🔍 Scan & Refresh", use_container_width=True, type="secondary"):
-            with st.spinner("Scanning Market for Genuine Breakouts..."):
-                new_picks = discover_open_world_candidates(
-                    top_n=10,
-                    buffer_pct=global_buffer / 100.0,
-                    rvol_th=global_rvol,
-                    atr_th=global_atr
-                )
-                if new_picks:
-                    picks_str = ", ".join(new_picks)
-                    st.session_state["preset_tickers"]["Recommendations"] = picks_str
-                    st.session_state["ticker_box_Recommendations"] = picks_str
-                    save_persistent_state(st.session_state["preset_tickers"])
-                    st.session_state["scan_feedback"] = ("success", f"Found {len(new_picks)} verified ACCUMULATE candidates!")
-                else:
-                    st.session_state["preset_tickers"]["Recommendations"] = ""
-                    st.session_state["ticker_box_Recommendations"] = ""
-                    save_persistent_state(st.session_state["preset_tickers"])
-                    st.session_state["scan_feedback"] = ("warning", "⚠️ No qualifying ACCUMULATE breakout candidates found matching current parameters. No buy recommendations at this time.")
-                st.rerun()
-    with col_input:
-        ticker_input = st.text_input(
-            "Watchlist Tickers (Editable):",
-            value=current_tickers_val,
-            key=f"ticker_box_{selected_preset}",
-            on_change=on_text_input_change,
-        )
-    
-    # Persistent scan message block so it doesn't flash and disappear
-    if "scan_feedback" in st.session_state:
-        f_type, f_msg = st.session_state["scan_feedback"]
-        if f_type == "success":
-            st.success(f_msg)
-        else:
-            st.warning(f_msg)
-else:
-    ticker_input = st.text_input(
-        "Watchlist Tickers (Editable):",
-        value=current_tickers_val,
-        key=f"ticker_box_{selected_preset}",
-        on_change=on_text_input_change,
-    )
+ticker_input = st.text_input(
+    "Watchlist Tickers (Editable):",
+    value=current_tickers_val,
+    key=f"ticker_box_{selected_preset}",
+    on_change=on_text_input_change,
+)
 
 if ticker_input != current_tickers_val:
     st.session_state["preset_tickers"][selected_preset] = ticker_input
@@ -447,7 +338,4 @@ if run_screener:
     else:
         st.warning("⚠️ Please enter at least one ticker symbol above before running the screener.")
 else:
-    if selected_preset == "Recommendations":
-        st.info("💡 **Workflow Notice**: Click **🔍 Scan & Refresh** to check for active buy candidates. If none meet strict breakout criteria, the warning banner will stay on screen.")
-    else:
-        st.info("💡 Enter your tickers above and click **🚀 Run Screener** to generate your consolidated portfolio table.")
+    st.info("💡 Enter your tickers above and click **🚀 Run Screener** to generate your consolidated portfolio table.")
