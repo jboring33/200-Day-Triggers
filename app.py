@@ -141,8 +141,8 @@ def discover_open_world_candidates(top_n=10, buffer_pct=0.02, rvol_th=0.80, atr_
             atr_ok = atr_pct >= atr_th
             short_term_bullish = (price >= ema20) and (macd_hist >= -0.01)
 
-            # Balanced discovery gate allowing UP and FLAT trends with solid momentum
-            if price >= p_baseline and slope_val in ["UP", "FLAT"] and rvol_ok and atr_ok and short_term_bullish:
+            # Strict gate: Only return candidates that genuinely qualify for ACCUMULATE
+            if price > u_th and slope_val in ["UP", "FLAT"] and rvol_ok and atr_ok and short_term_bullish:
                 score = ((price - p_baseline) / p_baseline) * rvol
                 scored.append((t, score))
         except Exception:
@@ -150,7 +150,9 @@ def discover_open_world_candidates(top_n=10, buffer_pct=0.02, rvol_th=0.80, atr_
             
     scored.sort(key=lambda x: x[1], reverse=True)
     picks = [item[0] for item in scored[:top_n]]
-    return picks if picks else ["SPY", "QQQ", "NVDA", "SMH", "XLK", "AMZN", "MSFT", "IBIT"]
+    
+    # Return strictly what qualifies. If none qualify, return empty list.
+    return picks
 
 def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_atr_threshold=0.50):
     results = []
@@ -349,7 +351,7 @@ if selected_preset == "Recommendations":
     col_scan, col_input = st.columns([1, 3])
     with col_scan:
         if st.button("🔍 Scan & Refresh", use_container_width=True, type="secondary"):
-            with st.spinner("Executing Market Discovery..."):
+            with st.spinner("Scanning Market for Genuine Breakouts..."):
                 new_picks = discover_open_world_candidates(
                     top_n=10,
                     buffer_pct=global_buffer / 100.0,
@@ -361,10 +363,14 @@ if selected_preset == "Recommendations":
                     st.session_state["preset_tickers"]["Recommendations"] = picks_str
                     st.session_state["ticker_box_Recommendations"] = picks_str
                     save_persistent_state(st.session_state["preset_tickers"])
-                    st.success("Recommendations populated with verified ACCUMULATE candidates!")
+                    st.success(f"Found {len(new_picks)} verified ACCUMULATE candidates!")
                     st.rerun()
                 else:
-                    st.warning("No qualifying candidates found matching current parameters.")
+                    st.session_state["preset_tickers"]["Recommendations"] = ""
+                    st.session_state["ticker_box_Recommendations"] = ""
+                    save_persistent_state(st.session_state["preset_tickers"])
+                    st.warning("⚠️ No qualifying ACCUMULATE breakout candidates found matching current parameters. No buy recommendations at this time.")
+                    st.rerun()
     with col_input:
         ticker_input = st.text_input(
             "Watchlist Tickers (Editable):",
@@ -439,6 +445,6 @@ if run_screener:
         st.warning("⚠️ Please enter at least one ticker symbol above before running the screener.")
 else:
     if selected_preset == "Recommendations":
-        st.info("💡 **Workflow Notice**: Click **🔍 Scan & Refresh** first to populate pre-screened breakout candidates, then click **🚀 Run Screener**.")
+        st.info("💡 **Workflow Notice**: Click **🔍 Scan & Refresh** to check for active buy candidates. If none meet strict breakout criteria, the list will remain empty.")
     else:
         st.info("💡 Enter your tickers above and click **🚀 Run Screener** to generate your consolidated portfolio table.")
