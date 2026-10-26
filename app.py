@@ -31,6 +31,26 @@ else:
   ASSET_DESCRIPTIONS = {}
   PRESET_CONFIGS = {"Watching": {"tickers": "", "rationale": "Default watchlist"}}
 
+# Capture passed tickers from RT app and isolate them into a dedicated 'Recommended' preset
+try:
+  url_params = st.query_params
+  init_preset = url_params.get("preset", "Watching")
+  if not isinstance(init_preset, str):
+    init_preset = init_preset[0] if len(init_preset) > 0 else "Watching"
+
+  passed_tickers = url_params.get("tickers", None)
+  if passed_tickers:
+    if not isinstance(passed_tickers, str):
+      passed_tickers = passed_tickers[0] if len(passed_tickers) > 0 else ""
+    if passed_tickers.strip():
+      PRESET_CONFIGS["Recommended"] = {
+          "tickers": passed_tickers,
+          "rationale": "Tickers imported from Recommend Tickers (RT) App",
+      }
+      init_preset = "Recommended"
+except Exception:
+  init_preset = "Watching"
+
 
 def load_persistent_state():
   data = {}
@@ -242,33 +262,16 @@ def analyze_tickers(
 
   return pd.DataFrame(results)
 
-#pass ticker parms from RT program
-try:
-  url_params = st.query_params
-  init_preset = url_params.get("preset", "Watching")
-  if not isinstance(init_preset, str):
-    init_preset = init_preset[0] if len(init_preset) > 0 else "Watching"
-
-  # Automatically pick up and override the Watching preset with tickers passed from RT
-  passed_tickers = url_params.get("tickers", None)
-  if passed_tickers:
-    if not isinstance(passed_tickers, str):
-      passed_tickers = passed_tickers[0] if len(passed_tickers) > 0 else ""
-    if passed_tickers.strip():
-      PRESET_CONFIGS["Watching"]["tickers"] = passed_tickers
-      # Force session state to pick up the incoming URL tickers immediately
-      if "preset_tickers" in st.session_state:
-        st.session_state["preset_tickers"]["Watching"] = passed_tickers
-      if "ticker_box_Watching" in st.session_state:
-        st.session_state["ticker_box_Watching"] = passed_tickers
-except Exception:
-  init_preset = "Watching"
 
 if init_preset not in PRESET_CONFIGS:
   init_preset = "Watching"
 
 if "preset_tickers" not in st.session_state:
   st.session_state["preset_tickers"] = load_persistent_state()
+  if "Recommended" in PRESET_CONFIGS:
+    st.session_state["preset_tickers"]["Recommended"] = PRESET_CONFIGS[
+        "Recommended"
+    ]["tickers"]
 else:
   for name, cfg in PRESET_CONFIGS.items():
     if (
@@ -276,6 +279,12 @@ else:
         or not st.session_state["preset_tickers"][name].strip()
     ):
       st.session_state["preset_tickers"][name] = cfg["tickers"]
+
+# Ensure Recommended is populated in session state if passed via URL later
+if "Recommended" in PRESET_CONFIGS and "preset_tickers" in st.session_state:
+  st.session_state["preset_tickers"]["Recommended"] = PRESET_CONFIGS[
+      "Recommended"
+  ]["tickers"]
 
 if (
     "preset_radio" not in st.session_state
