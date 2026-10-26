@@ -227,7 +227,7 @@ def discover_open_world_candidates(top_n=10):
         try:
             df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
             df = clean_df_columns(df)
-            if df.empty or len(df) < 65: # Allow short-history tickers
+            if df.empty or len(df) < 65:
                 continue
             
             c = df["Close"].squeeze()
@@ -267,8 +267,10 @@ def discover_open_world_candidates(top_n=10):
             eff_buf = max(0.02, (atr / price) * 1.5)
             u_th = p_baseline * (1.0 + eff_buf)
 
-            ema20 = float(c.ewm(span=20, adjust=False).mean().iloc[-1]) if len(c) >= 20 else price
-            sma50 = float(c.rolling(50).mean().iloc[-1]) if len(c) >= 50 else p_baseline
+            ema20_s = c.ewm(span=20, adjust=False).mean()
+            sma50_s = c.rolling(50).mean()
+            ema20 = float(ema20_s.iloc[-1]) if len(c) >= 20 else price
+            sma50 = float(sma50_s.iloc[-1]) if len(c) >= 50 else p_baseline
             macd_hist = get_macd(c) if len(c) >= 26 else 0.0
 
             score = ((price - p_baseline) / p_baseline) * max(0.5, rvol)
@@ -302,7 +304,7 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
             description = get_asset_description(t)
             df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
             df = clean_df_columns(df)
-            if df.empty or len(df) < 60: # Short history bypass minimum requirement
+            if df.empty or len(df) < 60:
                 continue
 
             c = df["Close"].squeeze()
@@ -368,14 +370,22 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
             else:
                 buffer_label = f"🔴 {buf_pct_val:.2f}%"
 
-            ema20 = float(c.ewm(span=20, adjust=False).mean().iloc[-1]) if len(c) >= 20 else price
-            sma50 = float(c.rolling(50).mean().iloc[-1]) if len(c) >= 50 else p_baseline
-            macd_hist = get_macd(c) if len(c) >= 26 else 0.0
+            # 20 EMA & 50 SMA daily change arrows (comparing today vs yesterday)
+            ema20_series = c.ewm(span=20, adjust=False).mean()
+            ema20_curr = float(ema20_series.iloc[-1]) if len(c) >= 20 else price
+            ema20_prev = float(ema20_series.iloc[-2]) if len(c) >= 20 else ema20_curr
+            ema20_arrow = "🟢 ↗" if ema20_curr >= ema20_prev else "🔴 ↘"
 
+            sma50_series = c.rolling(50).mean()
+            sma50_curr = float(sma50_series.iloc[-1]) if len(c) >= 50 else p_baseline
+            sma50_prev = float(sma50_series.iloc[-2]) if len(c) >= 50 else sma50_curr
+            sma50_arrow = "🟢 ↗" if sma50_curr >= sma50_prev else "🔴 ↘"
+
+            macd_hist = get_macd(c) if len(c) >= 26 else 0.0
             macd_label = "🟢 Bullish" if macd_hist > 0 else "🔴 Bearish"
 
-            short_term_bullish = (price > ema20) and (ema20 >= sma50) and (macd_hist > 0)
-            short_term_bearish = (price < ema20) and (ema20 <= sma50) and (macd_hist < 0)
+            short_term_bullish = (price > ema20_curr) and (ema20_curr >= sma50_curr) and (macd_hist > 0)
+            short_term_bearish = (price < ema20_curr) and (ema20_curr <= sma50_curr) and (macd_hist < 0)
 
             if is_recommendations:
                 if price >= p_baseline and slope_val in ["UP", "FLAT"]:
@@ -405,8 +415,8 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
                 "Baseline Type": baseline_label,
                 "% vs Baseline": f"{pct_baseline:+.2f}%",
                 "Trend Slope": slope_label,
-                "20 EMA": round(ema20, 2),
-                "50 SMA": round(sma50, 2),
+                "20 EMA": f"{ema20_curr:.2f} {ema20_arrow}",
+                "50 SMA": f"{sma50_curr:.2f} {sma50_arrow}",
                 "MACD Trend": macd_label,
                 "Buffer (%)": buffer_label,
                 "Inst. Vol (RVOL)": rvol_label,
@@ -488,22 +498,22 @@ with st.sidebar:
         st.markdown("---")
         st.markdown("### **4. Core Architectural Concepts**")
         st.markdown("* **200-Day Simple Moving Average (SMA) & Short-History Bypass:** The institutional baseline for macro trend-following (~10 months of price history). Tickers with fewer than 200 days of history automatically utilize a short-history moving average baseline.")
-        st.markdown("* **1-Month Slope Lookback (21 Trading Days):** Measures the directional trajectory of the baseline over a full calendar month to prevent false trend reversals.")
+        st.markdown("* **Moving Average Daily Direction (20 EMA & 50 SMA):** Each short-term moving average includes a daily directional arrow (`🟢 ↗` / `🔴 ↘`) comparing its value to the previous trading day.")
         st.markdown("* **Noise Buffer (±%):** A customizable percentage band built around the baseline (dynamically scaled using ATR) to eliminate whipsaws during minor consolidations.")
-        st.markdown("* **Institutional Volume & Volatility Confirmation:** Measured via **Inst. Vol (RVOL)** (comparing trading volume against the 20-day average) and **Volatility (ATR %)** to ensure genuine market participation.")
+        st.markdown("* **Institutional Volume & Volatility Confirmation:** Measured via **Inst. Vol (RVOL)** and **Volatility (ATR %)** to ensure genuine market participation.")
 
         st.markdown("---")
         st.markdown("### **5. Status & Action Classification Matrix**")
-        st.markdown("* 🟢 **ACCUMULATE:** Price is above the Upper Threshold, Trend Slope is **UP**, RVOL and ATR satisfy minimum parameters, and short-term MAs (20/50) + MACD confirm upward momentum.")
+        st.markdown("* 🟢 **ACCUMULATE:** Price is above the Upper Threshold, Trend Slope is **UP**, RVOL and ATR satisfy minimum parameters, and short-term MAs + MACD confirm upward momentum.")
         st.markdown("* 🟢 **HOLD:** Price is above the Upper Threshold and Trend Slope is **UP**, but short-term volume or momentum indicators are unconfirmed.")
         st.markdown("* ⚪ **BUFFER ZONE:** Price is between the Lower and Upper Thresholds. Capital actions are held neutral to prevent whipsaws.")
-        st.markdown("* 🟡 **EARLY WARNING (TRIM):** Price slips below the Lower Threshold while short-term momentum (20 EMA < 50 SMA and MACD negative) confirms distribution.")
+        st.markdown("* 🟡 **EARLY WARNING (TRIM):** Price slips below the Lower Threshold while short-term momentum confirms distribution.")
         st.markdown("* 🟡 **CAUTION:** Price is outside the noise band, but diverges from the moving average slope trajectory.")
-        st.markdown("* 🔴 **SELL / ROTATE:** Price is below the Lower Threshold and Trend Slope is **DOWN**. Triggers risk mitigation and rotation into safe-harbor assets.")
+        st.markdown("* 🔴 **SELL / ROTATE:** Price is below the Lower Threshold and Trend Slope is **DOWN**.")
 
         st.markdown("---")
         st.markdown("### **6. Indicator Visual Badging Logic**")
-        st.markdown("* **Trend Slope:** 🟢 **UP** (> +0.05%), ⚪ **FLAT** (-0.05% to +0.05%), 🔴 **DOWN** (< -0.05%).")
+        st.markdown("* **Trend Slope & MAs:** 🟢 **UP / Rising** (> +0.05% or higher than previous day), 🔴 **DOWN / Falling** (< -0.05% or lower than previous day).")
         st.markdown("* **Buffer (%):** 🟢 **Green** if effective buffer <= 1.25x target baseline; 🟡 **Yellow** if <= 1.75x; 🔴 **Red** if wider than 1.75x.")
         st.markdown("* **Inst. Vol (RVOL):** 🟢 **Green** if >= minimum threshold; 🟡 **Yellow** if below.")
         st.markdown("* **Volatility (ATR %):** 🟢 **Green** if >= minimum threshold; 🔴 **Red** if below.")
