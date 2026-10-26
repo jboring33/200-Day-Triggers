@@ -426,8 +426,19 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
 
     return pd.DataFrame(results)
 
-url_params = st.query_params
-init_preset = url_params.get("preset", "Watching")
+# Safe query parameter extraction supporting both old and new Streamlit versions
+try:
+    url_params = st.query_params
+    init_preset = url_params.get("preset", "Watching")
+    if not isinstance(init_preset, str):
+        init_preset = init_preset[0] if len(init_preset) > 0 else "Watching"
+except Exception:
+    try:
+        url_params = st.experimental_get_query_params()
+        init_preset = url_params.get("preset", ["Watching"])[0]
+    except Exception:
+        init_preset = "Watching"
+
 if init_preset not in PRESET_CONFIGS:
     init_preset = "Watching"
 
@@ -443,12 +454,204 @@ if "preset_radio" not in st.session_state or st.session_state["preset_radio"] no
 
 def on_preset_change():
     sel = st.session_state["preset_radio"]
-    st.query_params["preset"] = sel
-    st.query_params["tickers"] = st.session_state["preset_tickers"][sel]
+    try:
+        st.query_params["preset"] = sel
+        st.query_params["tickers"] = st.session_state["preset_tickers"][sel]
+    except Exception:
+        pass
 
 def on_text_input_change():
     sel = st.session_state["preset_radio"]
     key = f"ticker_box_{sel}"
     if key in st.session_state:
         val = st.session_state[key]
-        st.session
+        st.session_state["preset_tickers"][sel] = val
+        save_persistent_state(st.session_state["preset_tickers"])
+        try:
+            st.query_params["preset"] = sel
+            st.query_params["tickers"] = val
+        except Exception:
+            pass
+
+with st.sidebar:
+    if st.button("🔄 Reset All Watchlists to Defaults", use_container_width=True, type="secondary"):
+        if os.path.exists(STATE_FILE):
+            try:
+                os.remove(STATE_FILE)
+            except Exception:
+                pass
+        for name, cfg in PRESET_CONFIGS.items():
+            st.session_state["preset_tickers"][name] = cfg["tickers"]
+            if f"ticker_box_{name}" in st.session_state:
+                st.session_state[f"ticker_box_{name}"] = cfg["tickers"]
+        st.success("Watchlists reset to defaults!")
+        st.rerun()
+
+    st.divider()
+
+    with st.expander("📖 **Read Me**", expanded=False):
+        st.markdown("### **1. Active Preset Rationale**")
+        active_preset_name = st.session_state.get("preset_radio", "Watching")
+        current_rationale = PRESET_CONFIGS.get(active_preset_name, {}).get("rationale", "No rationale defined.")
+        st.markdown(f"> **{active_preset_name}**: {current_rationale}")
+
+        st.markdown("---")
+        st.markdown("### **2. All Preset Rationales**")
+        for p_name, p_cfg in PRESET_CONFIGS.items():
+            st.markdown(f"* **{p_name}**: {p_cfg['rationale']}")
+
+        st.markdown("---")
+        st.markdown("### **3. Quick Start Guide**")
+        st.markdown("1. **Select a Watchlist Preset**: Use the horizontal preset buttons at the top of the main panel to choose a curated asset pool.")
+        st.markdown("2. **Customize Tickers**: The text box below displays active tickers. Add or remove comma-separated stock or ETF symbols freely. Changes are saved automatically and persist across app reloads/sleep states.")
+        st.markdown("3. **Run the Screener**: Click the **🚀 Run Screener** button directly below the ticker input box to analyze secular trends.")
+        st.markdown("4. **Fine-Tune Parameters (Optional)**: Adjust core thresholds like the base buffer noise filter, minimum RVOL, or minimum ATR below.")
+
+        st.markdown("---")
+        st.markdown("### **4. Core Architectural Concepts**")
+        st.markdown("* **200-Day Simple Moving Average (SMA) & Short-History Bypass:** The institutional baseline for macro trend-following including its daily directional arrow (`🟢 ↗` / `🔴 ↘`). Tickers with fewer than 200 days of history automatically utilize a short-history moving average baseline.")
+        st.markdown("* **Moving Average Daily Direction (20 EMA, 50 SMA, 200 SMA):** Short and long-term moving averages include daily directional arrows comparing their values to the previous trading day.")
+        st.markdown("* **Noise Buffer (±%):** A customizable percentage band built around the baseline (dynamically scaled using ATR) to eliminate whipsaws during minor consolidations.")
+        st.markdown("* **Institutional Volume & Volatility Confirmation:** Measured via **Inst. Vol (RVOL)** and **Volatility (ATR %)** to ensure genuine market participation.")
+
+        st.markdown("---")
+        st.markdown("### **5. Status & Action Classification Matrix**")
+        st.markdown("* 🟢 **ACCUMULATE:** Price is above the Upper Threshold, Trend Slope is **UP**, RVOL and ATR satisfy minimum parameters, and short-term MAs + MACD confirm upward momentum.")
+        st.markdown("* 🟢 **HOLD:** Price is above the Upper Threshold and Trend Slope is **UP**, but short-term volume or momentum indicators are unconfirmed.")
+        st.markdown("* ⚪ **BUFFER ZONE:** Price is between the Lower and Upper Thresholds. Capital actions are held neutral to prevent whipsaws.")
+        st.markdown("* 🟡 **EARLY WARNING (TRIM):** Price slips below the Lower Threshold while short-term momentum confirms distribution.")
+        st.markdown("* 🟡 **CAUTION:** Price is outside the noise band, but diverges from the moving average slope trajectory.")
+        st.markdown("* 🔴 **SELL / ROTATE:** Price is below the Lower Threshold and Trend Slope is **DOWN**.")
+
+        st.markdown("---")
+        st.markdown("### **6. Indicator Visual Badging Logic**")
+        st.markdown("* **Moving Average Arrows:** 🟢 **Rising** (higher than previous day), 🔴 **Falling** (lower than previous day).")
+        st.markdown("* **Buffer (%):** 🟢 **Green** if effective buffer <= 1.25x target baseline; 🟡 **Yellow** if <= 1.75x; 🔴 **Red** if wider than 1.75x.")
+        st.markdown("* **Inst. Vol (RVOL):** 🟢 **Green** if >= minimum threshold; 🟡 **Yellow** if below.")
+        st.markdown("* **Volatility (ATR %):** 🟢 **Green** if >= minimum threshold; 🔴 **Red** if below.")
+
+    st.header("Screener Parameters")
+    st.divider()
+
+selected_preset = st.session_state["preset_radio"]
+active_defaults = PRESET_CONFIGS[selected_preset]
+
+if selected_preset == "Recommendations":
+    st.sidebar.info("💡 **Autonomous Mode**: Recommendations evaluate each ticker individually based on live market discovery.")
+    buffer_setting = 2.0
+    rvol_setting = 0.80
+    min_atr_setting = 0.50
+else:
+    buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
+    rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
+    min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
+
+st.title("📈 " + REPO_NAME)
+st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+selected_preset = st.radio(
+    "Preset Selection",
+    options=list(PRESET_CONFIGS.keys()),
+    key="preset_radio",
+    on_change=on_preset_change,
+    horizontal=True,
+    label_visibility="collapsed"
+)
+
+current_tickers_val = st.session_state["preset_tickers"].get(selected_preset, "")
+
+if selected_preset == "Recommendations":
+    col_scan, col_input = st.columns([1, 3])
+    with col_scan:
+        if st.button("🔍 Scan & Refresh", use_container_width=True, type="secondary"):
+            with st.spinner("Executing Strict Accumulation Discovery..."):
+                new_picks = discover_open_world_candidates(top_n=10)
+                if new_picks:
+                    picks_str = ", ".join(new_picks)
+                    st.session_state["preset_tickers"]["Recommendations"] = picks_str
+                    st.session_state["ticker_box_Recommendations"] = picks_str
+                    save_persistent_state(st.session_state["preset_tickers"])
+                    st.success("Recommendations populated with top ACCUMULATE candidates!")
+                    st.rerun()
+                else:
+                    st.warning("No qualifying accumulation candidates found in current market scan.")
+    with col_input:
+        ticker_input = st.text_input(
+            "Watchlist Tickers (Editable):",
+            value=current_tickers_val,
+            key=f"ticker_box_{selected_preset}",
+            on_change=on_text_input_change,
+            help="Edit tickers freely. Changes are saved instantly and persist across sessions.",
+        )
+else:
+    ticker_input = st.text_input(
+        "Watchlist Tickers (Editable):",
+        value=current_tickers_val,
+        key=f"ticker_box_{selected_preset}",
+        on_change=on_text_input_change,
+        help="Edit tickers freely. Changes are saved instantly and persist across sessions.",
+    )
+
+if ticker_input != current_tickers_val:
+    st.session_state["preset_tickers"][selected_preset] = ticker_input
+    st.session_state[f"ticker_box_{selected_preset}"] = ticker_input
+    save_persistent_state(st.session_state["preset_tickers"])
+    try:
+        st.query_params["preset"] = selected_preset
+        st.query_params["tickers"] = ticker_input
+    except Exception:
+        pass
+
+run_screener = st.button("🚀 Run Screener", type="primary", use_container_width=True)
+
+st.divider()
+
+if run_screener:
+    tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
+    if tickers_list:
+        with st.spinner("Analyzing portfolio secular trends..."):
+            df_results = analyze_tickers(
+                tickers_list,
+                default_buffer_pct=buffer_setting / 100.0,
+                rvol_threshold=rvol_setting,
+                min_atr_threshold=min_atr_setting,
+                is_recommendations=(selected_preset == "Recommendations"),
+            )
+        if not df_results.empty:
+            st.subheader("📋 Unified Portfolio Action & Trend Matrix")
+            
+            st.markdown(
+                """
+                <style>
+                dataframe, table, th, td {
+                    white-space: normal !important;
+                    word-wrap: break-word !important;
+                }
+                td:nth-child(2), th:nth-child(2) {
+                    min-width: 250px;
+                    max-width: 350px;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True
+            )
+
+            st.dataframe(df_results, use_container_width=True, hide_index=True)
+
+            st.divider()
+            csv_data = df_results.to_csv(index=False)
+            st.download_button(
+                "📥 Download Matrix CSV",
+                csv_data,
+                "200_day_unified_matrix.csv",
+                "text/csv",
+            )
+        else:
+            st.warning("⚠️ No valid data could be retrieved for the specified tickers. Please verify the symbols.")
+    else:
+        st.warning("⚠️ Please enter at least one ticker symbol above before running the screener.")
+else:
+    if selected_preset == "Recommendations":
+        st.info("💡 **Workflow Notice**: Click **🔍 Scan & Refresh** first to dynamically scan and load active **ACCUMULATE** breakout candidates, then click **🚀 Run Screener** to evaluate them.")
+    else:
+        st.info("💡 Enter your tickers above and click **🚀 Run Screener** to generate your consolidated portfolio table.")
