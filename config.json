@@ -74,10 +74,6 @@
       "tickers": "",
       "rationale": "Your blank personal active watchlist for monitoring custom setups."
     },
-    "Recommendations": {
-      "tickers": "",
-      "rationale": "Autonomous discovery scanner populating high-probability breakout candidates."
-    },
     "Broad Market": {
       "tickers": "SPY, QQQ, DJIA, EMXC, VEA",
       "rationale": "Broad indices exhibiting moderate volatility."
@@ -91,7 +87,7 @@
       "rationale": "Broad sector and industry tracking pool."
     },
     "Bond ETFs": {
-      "tickers": "SGOV, JPST,JAAA, JBBB, SCYB",
+      "tickers": "SGOV, JPST, JAAA, JBBB, SCYB",
       "rationale": "Fixed-income assets in tight bands."
     },
     "Covered Call ETFs": {
