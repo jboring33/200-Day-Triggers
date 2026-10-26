@@ -362,4 +362,11 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
             buf_pct_val = eff_buf * 100.0
             target_pct_val = default_buffer_pct * 100.0
             if buf_pct_val <= (target_pct_val * 1.25):
-                buffer_label = f"🟢 {buf_pct_val:.2
+                buffer_label = f"🟢 {buf_pct_val:.2f}%"
+            elif buf_pct_val <= (target_pct_val * 1.75):
+                buffer_label = f"🟡 {buf_pct_val:.2f}%"
+            else:
+                buffer_label = f"🔴 {buf_pct_val:.2f}%"
+
+            ema20_series = c.ewm(span=20, adjust=False).mean()
+            ema20_curr = float(ema20_series
