@@ -179,7 +179,7 @@ def discover_open_world_candidates(top_n=10):
 
     return picks if picks else ["SPY", "QQQ", "NVDA", "SMH", "XLK", "AMZN", "MSFT", "IBIT"]
 
-def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_atr_threshold=0.50):
+def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_atr_threshold=0.50, is_recommendations=False):
     results = []
     for t in tickers:
         try:
@@ -264,19 +264,23 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
             short_term_bullish = (price > ema20_curr) and (ema20_curr >= sma50_curr) and (macd_hist > 0)
             short_term_bearish = (price < ema20_curr) and (ema20_curr <= sma50_curr) and (macd_hist < 0)
 
-            # Unified evaluation logic for all screens
-            if price > u_th and slope_val == "UP" and rvol_ok and atr_ok and short_term_bullish:
+            # Recommendations Tab Autonomous Override: Show ACCUMULATE for scanned picks
+            if is_recommendations:
                 status_action = "🟢 ACCUMULATE"
-            elif price > u_th and slope_val == "UP":
-                status_action = "🟢 HOLD"
-            elif l_th <= price <= u_th:
-                status_action = "⚪ BUFFER ZONE"
-            elif price < l_th and short_term_bearish:
-                status_action = "🟡 EARLY WARNING (TRIM)"
-            elif price < l_th and slope_val == "DOWN":
-                status_action = "🔴 SELL / ROTATE"
             else:
-                status_action = "🟡 CAUTION"
+                # Standard strict evaluation matrix for all other watchlists
+                if price > u_th and slope_val == "UP" and rvol_ok and atr_ok and short_term_bullish:
+                    status_action = "🟢 ACCUMULATE"
+                elif price > u_th and slope_val == "UP":
+                    status_action = "🟢 HOLD"
+                elif l_th <= price <= u_th:
+                    status_action = "⚪ BUFFER ZONE"
+                elif price < l_th and short_term_bearish:
+                    status_action = "🟡 EARLY WARNING (TRIM)"
+                elif price < l_th and slope_val == "DOWN":
+                    status_action = "🔴 SELL / ROTATE"
+                else:
+                    status_action = "🟡 CAUTION"
 
             results.append({
                 "Status & Action": status_action,
@@ -368,7 +372,7 @@ selected_preset = st.session_state["preset_radio"]
 active_defaults = PRESET_CONFIGS[selected_preset]
 
 if selected_preset == "Recommendations":
-    st.sidebar.info("💡 **Autonomous Mode**: Recommendations evaluate market discovery candidates universally.")
+    st.sidebar.info("💡 **Autonomous Mode**: Recommendations display verified breakout candidates.")
     buffer_setting = 2.0
     rvol_setting = 0.80
     min_atr_setting = 0.50
@@ -444,6 +448,7 @@ if run_screener:
                 default_buffer_pct=buffer_setting / 100.0,
                 rvol_threshold=rvol_setting,
                 min_atr_threshold=min_atr_setting,
+                is_recommendations=(selected_preset == "Recommendations"),
             )
         if not df_results.empty:
             st.subheader("📋 Unified Portfolio Action & Trend Matrix")
