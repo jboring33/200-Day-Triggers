@@ -192,4 +192,263 @@ def get_macd(close):
     macd = exp1 - exp2
     signal = macd.ewm(span=9, adjust=False).mean()
     hist = macd - signal
-    return
+    return float(hist.iloc[-1])
+
+def get_asset_description(symbol):
+    if symbol in ASSET_DESCRIPTIONS:
+        return ASSET_DESCRIPTIONS[symbol]
+    try:
+        t = yf.Ticker(symbol)
+        info = t.info
+        name = info.get("shortName") or info.get("longName")
+        if name:
+            return name
+    except Exception:
+        pass
+    return f"US Listed Asset ({symbol})"
+
+@st.cache_data(ttl=3600)
+def fetch_open_world_universe():
+    return [
+        "SPY", "QQQ", "IWM", "SMH", "XLF", "XLE", "XLK", "XLV", "XLI", 
+        "XLP", "XLY", "XLC", "XLB", "XLU", "XLRE", "IGV", "ITA", "XHB", 
+        "XME", "XOP", "KRE", "SOXX", "XBI", "GLD", "SLV", "MTUM", "QUAL", 
+        "IWF", "IWD", "DGRO", "VWO", "EFA", "NVDA", "AAPL", "MSFT", "AMZN", 
+        "GOOGL", "META", "TSLA", "SCHD", "JEPI", "QQQI", "JEPQ", "DJIA", "VEA",
+        "TLT", "HYG", "LQD", "IBIT", "FBTC", "IAUM"
+    ]
+
+def discover_open_world_candidates(top_n=10):
+    live_universe = fetch_open_world_universe()
+    scored = []
+    fallback_scored = []
+    
+    for t in live_universe:
+        try:
+            df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
+            df = clean_df_columns(df)
+            if df.empty or len(df) < 65:
+                continue
+            
+            c = df["Close"].squeeze()
+            v = df["Volume"].squeeze()
+            h = df["High"].squeeze()
+            l = df["Low"].squeeze()
+            o = df["Open"].squeeze()
+
+            if isinstance(c, pd.DataFrame): c = c.iloc[:, 0]
+            if isinstance(v, pd.DataFrame): v = v.iloc[:, 0]
+            if isinstance(h, pd.DataFrame): h = h.iloc[:, 0]
+            if isinstance(l, pd.DataFrame): l = l.iloc[:, 0]
+            if isinstance(o, pd.DataFrame): o = o.iloc[:, 0]
+
+            df_clean = pd.DataFrame({"High": h, "Low": l, "Close": c, "Open": o})
+            price = float(c.iloc[-1])
+            vol = float(v.iloc[-1])
+            v_sma20 = float(v.rolling(20).mean().iloc[-1]) if len(v) >= 20 else float(v.mean())
+            rvol = vol / v_sma20 if v_sma20 > 0 else 1.0
+
+            has_200 = len(c) >= 200
+            if has_200:
+                baseline_series = c.rolling(200).mean()
+                p_baseline = float(baseline_series.iloc[-1])
+                prev_baseline = float(baseline_series.iloc[-21])
+                sma_diff = ((p_baseline - prev_baseline) / prev_baseline) * 100
+                slope_val = "UP" if sma_diff > 0.05 else ("DOWN" if sma_diff < -0.05 else "FLAT")
+            else:
+                w = min(50, len(c) - 10)
+                baseline_series = c.rolling(w).mean()
+                p_baseline = float(baseline_series.iloc[-1])
+                prev_baseline = float(baseline_series.iloc[-max(5, len(c)//4)])
+                slope_val = "UP" if p_baseline >= prev_baseline else "FLAT"
+
+            atr = get_atr(df_clean)
+            atr_pct = (atr / price) * 100
+            eff_buf = max(0.02, (atr / price) * 1.5)
+            u_th = p_baseline * (1.0 + eff_buf)
+
+            ema20_s = c.ewm(span=20, adjust=False).mean()
+            sma50_s = c.rolling(50).mean()
+            ema20 = float(ema20_s.iloc[-1]) if len(c) >= 20 else price
+            sma50 = float(sma50_s.iloc[-1]) if len(c) >= 50 else p_baseline
+            macd_hist = get_macd(c) if len(c) >= 26 else 0.0
+
+            score = ((price - p_baseline) / p_baseline) * max(0.5, rvol)
+
+            if price >= p_baseline and slope_val != "DOWN":
+                fallback_scored.append((t, score))
+
+            is_uptrend = (slope_val in ["UP", "FLAT"])
+            above_buffer = (price >= p_baseline)
+            short_term_bullish = (price >= ema20) and (ema20 >= sma50) and (macd_hist >= -0.01)
+            valid_volume_volatility = (rvol >= 0.70) and (atr_pct >= 0.30)
+
+            if is_uptrend and above_buffer and short_term_bullish and valid_volume_volatility:
+                scored.append((t, score))
+        except Exception:
+            continue
+            
+    scored.sort(key=lambda x: x[1], reverse=True)
+    picks = [item[0] for item in scored[:top_n]]
+    
+    if not picks and fallback_scored:
+        fallback_scored.sort(key=lambda x: x[1], reverse=True)
+        picks = [item[0] for item in fallback_scored[:top_n]]
+
+    return picks if picks else ["SPY", "QQQ", "NVDA", "SMH", "XLK", "AMZN", "MSFT", "IBIT"]
+
+def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_atr_threshold=0.50, is_recommendations=False):
+    results = []
+    for t in tickers:
+        try:
+            description = get_asset_description(t)
+            df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
+            df = clean_df_columns(df)
+            if df.empty or len(df) < 60:
+                continue
+
+            c = df["Close"].squeeze()
+            h = df["High"].squeeze()
+            l = df["Low"].squeeze()
+            o = df["Open"].squeeze()
+            v = df["Volume"].squeeze()
+
+            if isinstance(c, pd.DataFrame): c = c.iloc[:, 0]
+            if isinstance(h, pd.DataFrame): h = h.iloc[:, 0]
+            if isinstance(l, pd.DataFrame): l = l.iloc[:, 0]
+            if isinstance(o, pd.DataFrame): o = o.iloc[:, 0]
+            if isinstance(v, pd.DataFrame): v = v.iloc[:, 0]
+
+            df_clean = pd.DataFrame({"High": h, "Low": l, "Close": c, "Open": o})
+            price = float(c.iloc[-1])
+            vol = float(v.iloc[-1])
+
+            v_sma20 = float(v.rolling(20).mean().iloc[-1]) if len(v) >= 20 else float(v.mean())
+            rvol = vol / v_sma20 if v_sma20 > 0 else 1.0
+
+            has_200 = len(c) >= 200
+            if has_200:
+                baseline_series = c.rolling(200).mean()
+                p_baseline = float(baseline_series.iloc[-1])
+                prev_baseline_21 = float(baseline_series.iloc[-21])
+                prev_baseline_daily = float(baseline_series.iloc[-2])
+            else:
+                w = min(50, len(c) - 10)
+                baseline_series = c.rolling(w).mean()
+                p_baseline = float(baseline_series.iloc[-1])
+                prev_baseline_21 = float(baseline_series.iloc[-max(5, len(c)//4)])
+                prev_baseline_daily = float(baseline_series.iloc[-2]) if len(baseline_series) >= 2 else p_baseline
+
+            atr = get_atr(df_clean)
+            atr_pct = (atr / price) * 100
+            eff_buf = max(default_buffer_pct, (atr / price) * 1.5)
+
+            u_th = p_baseline * (1.0 + eff_buf)
+            l_th = p_baseline * (1.0 - eff_buf)
+
+            sma_diff = ((p_baseline - prev_baseline_21) / prev_baseline_21) * 100
+            if sma_diff > 0.05:
+                slope_val = "UP"
+            elif sma_diff < -0.05:
+                slope_val = "DOWN"
+            else:
+                slope_val = "FLAT"
+
+            baseline_arrow = "🟢 ↗" if p_baseline >= prev_baseline_daily else "🔴 ↘"
+
+            pct_baseline = ((price - p_baseline) / p_baseline) * 100.0
+            rvol_ok = rvol >= rvol_threshold
+            atr_ok = atr_pct >= min_atr_threshold
+
+            rvol_label = f"🟢 {rvol:.2f}x" if rvol_ok else f"🟡 {rvol:.2f}x"
+            atr_label = f"🟢 {atr_pct:.2f}%" if atr_ok else f"🔴 {atr_pct:.2f}%"
+            
+            buf_pct_val = eff_buf * 100.0
+            target_pct_val = default_buffer_pct * 100.0
+            if buf_pct_val <= (target_pct_val * 1.25):
+                buffer_label = f"🟢 {buf_pct_val:.2f}%"
+            elif buf_pct_val <= (target_pct_val * 1.75):
+                buffer_label = f"🟡 {buf_pct_val:.2f}%"
+            else:
+                buffer_label = f"🔴 {buf_pct_val:.2f}%"
+
+            ema20_series = c.ewm(span=20, adjust=False).mean()
+            ema20_curr = float(ema20_series.iloc[-1]) if len(c) >= 20 else price
+            ema20_prev = float(ema20_series.iloc[-2]) if len(c) >= 20 else ema20_curr
+            ema20_arrow = "🟢 ↗" if ema20_curr >= ema20_prev else "🔴 ↘"
+
+            sma50_series = c.rolling(50).mean()
+            sma50_curr = float(sma50_series.iloc[-1]) if len(c) >= 50 else p_baseline
+            sma50_prev = float(sma50_series.iloc[-2]) if len(c) >= 50 else sma50_curr
+            sma50_arrow = "🟢 ↗" if sma50_curr >= sma50_prev else "🔴 ↘"
+
+            macd_hist = get_macd(c) if len(c) >= 26 else 0.0
+            macd_label = "🟢 Bullish" if macd_hist > 0 else "🔴 Bearish"
+
+            short_term_bullish = (price > ema20_curr) and (ema20_curr >= sma50_curr) and (macd_hist > 0)
+            short_term_bearish = (price < ema20_curr) and (ema20_curr <= sma50_curr) and (macd_hist < 0)
+
+            if is_recommendations:
+                if price >= p_baseline and slope_val in ["UP", "FLAT"]:
+                    status_action = "🟢 ACCUMULATE"
+                else:
+                    status_action = "🟢 HOLD"
+            else:
+                if price > u_th and slope_val == "UP" and rvol_ok and atr_ok and short_term_bullish:
+                    status_action = "🟢 ACCUMULATE"
+                elif price > u_th and slope_val == "UP":
+                    status_action = "🟢 HOLD"
+                elif l_th <= price <= u_th:
+                    status_action = "⚪ BUFFER ZONE"
+                elif price < l_th and short_term_bearish:
+                    status_action = "🟡 EARLY WARNING (TRIM)"
+                elif price < l_th and slope_val == "DOWN":
+                    status_action = "🔴 SELL / ROTATE"
+                else:
+                    status_action = "🟡 CAUTION"
+
+            results.append({
+                "Status & Action": status_action,
+                "Ticker": t,
+                "Description": description,
+                "Price": round(price, 2),
+                "200 SMA": f"{round(p_baseline, 2)} {baseline_arrow}",
+                "% vs Baseline": f"{pct_baseline:+.2f}%",
+                "50 SMA": f"{sma50_curr:.2f} {sma50_arrow}",
+                "20 EMA": f"{ema20_curr:.2f} {ema20_arrow}",
+                "MACD Trend": macd_label,
+                "Buffer (%)": buffer_label,
+                "Inst. Vol (RVOL)": rvol_label,
+                "Volatility (ATR %)": atr_label,
+            })
+        except Exception as e:
+            st.error(f"Error processing {t}: {str(e)}")
+
+    return pd.DataFrame(results)
+
+url_params = st.query_params
+init_preset = url_params.get("preset", "Watching")
+if init_preset not in PRESET_CONFIGS:
+    init_preset = "Watching"
+
+if "preset_tickers" not in st.session_state:
+    st.session_state["preset_tickers"] = load_persistent_state()
+else:
+    for name, cfg in PRESET_CONFIGS.items():
+        if name not in st.session_state["preset_tickers"] or (name != "Recommendations" and not st.session_state["preset_tickers"][name].strip()):
+            st.session_state["preset_tickers"][name] = cfg["tickers"]
+
+if "preset_radio" not in st.session_state or st.session_state["preset_radio"] not in PRESET_CONFIGS:
+    st.session_state["preset_radio"] = init_preset
+
+def on_preset_change():
+    sel = st.session_state["preset_radio"]
+    st.query_params["preset"] = sel
+    st.query_params["tickers"] = st.session_state["preset_tickers"][sel]
+
+def on_text_input_change():
+    sel = st.session_state["preset_radio"]
+    key = f"ticker_box_{sel}"
+    if key in st.session_state:
+        val = st.session_state[key]
+        st.session
