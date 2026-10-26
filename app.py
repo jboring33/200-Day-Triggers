@@ -87,7 +87,7 @@ def fetch_open_world_universe():
         "XLP", "XLY", "XLC", "XLB", "XLU", "XLRE", "IGV", "ITA", "XHB", 
         "XME", "XOP", "KRE", "SOXX", "XBI", "GLD", "SLV", "MTUM", "QUAL", 
         "IWF", "IWD", "DGRO", "VWO", "EFA", "NVDA", "AAPL", "MSFT", "AMZN", 
-        "GOOGL", "META", "TSLA", "SCHD", "JEPI", "QQQI", "JEPQ", "DJIA", "VEA",
+        "GOOGL", "META", "TSLA", "SCHD", "JEPI", "QQQI", "SPYI", "JEPQ", "DJIA", "VEA",
         "TLT", "HYG", "LQD", "IBIT", "FBTC", "IAUM"
     ]
 
@@ -139,10 +139,10 @@ def discover_open_world_candidates(top_n=10, buffer_pct=0.02, rvol_th=0.80, atr_
 
             rvol_ok = rvol >= rvol_th
             atr_ok = atr_pct >= atr_th
-            short_term_bullish = (price > ema20) and (ema20 >= sma50) and (macd_hist > 0)
+            short_term_bullish = (price >= ema20) and (macd_hist >= -0.01)
 
-            # Scanner enforces the exact same gate as ACCUMULATE
-            if price > u_th and slope_val == "UP" and rvol_ok and atr_ok and short_term_bullish:
+            # Balanced discovery gate allowing UP and FLAT trends with solid momentum
+            if price >= p_baseline and slope_val in ["UP", "FLAT"] and rvol_ok and atr_ok and short_term_bullish:
                 score = ((price - p_baseline) / p_baseline) * rvol
                 scored.append((t, score))
         except Exception:
@@ -226,18 +226,15 @@ def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_
             macd_hist = get_macd(c) if len(c) >= 26 else 0.0
             macd_label = "🟢 Bullish" if macd_hist > 0 else "🔴 Bearish"
 
-            short_term_bullish = (price > ema20_curr) and (ema20_curr >= sma50_curr) and (macd_hist > 0)
-            short_term_bearish = (price < ema20_curr) and (ema20_curr <= sma50_curr) and (macd_hist < 0)
+            short_term_bullish = (price >= ema20_curr) and (macd_hist >= -0.01)
 
-            # Universal Matrix Gate (Identical across all tabs)
-            if price > u_th and slope_val == "UP" and rvol_ok and atr_ok and short_term_bullish:
+            # --- UNIFIED UNIVERSAL EVALUATION MATRIX ---
+            if price > u_th and slope_val in ["UP", "FLAT"] and rvol_ok and atr_ok and short_term_bullish:
                 status_action = "🟢 ACCUMULATE"
-            elif price > u_th and slope_val == "UP":
+            elif price > u_th and slope_val in ["UP", "FLAT"]:
                 status_action = "🟢 HOLD"
             elif l_th <= price <= u_th:
                 status_action = "⚪ BUFFER ZONE"
-            elif price < l_th and short_term_bearish:
-                status_action = "🟡 EARLY WARNING (TRIM)"
             elif price < l_th and slope_val == "DOWN":
                 status_action = "🔴 SELL / ROTATE"
             else:
