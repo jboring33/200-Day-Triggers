@@ -253,4 +253,377 @@ def discover_open_world_candidates(top_n=10):
                 baseline_series = c.rolling(200).mean()
                 p_baseline = float(baseline_series.iloc[-1])
                 prev_baseline = float(baseline_series.iloc[-21])
-                sma
+                sma_diff = ((p_baseline - prev_baseline) / prev_baseline) * 100
+                slope_val = "UP" if sma_diff > 0.05 else ("DOWN" if sma_diff < -0.05 else "FLAT")
+            else:
+                w = min(50, len(c) - 10)
+                baseline_series = c.rolling(w).mean()
+                p_baseline = float(baseline_series.iloc[-1])
+                prev_baseline = float(baseline_series.iloc[-max(5, len(c)//4)])
+                slope_val = "UP" if p_baseline >= prev_baseline else "FLAT"
+
+            atr = get_atr(df_clean)
+            atr_pct = (atr / price) * 100
+            eff_buf = max(0.02, (atr / price) * 1.5)
+            u_th = p_baseline * (1.0 + eff_buf)
+
+            ema20_s = c.ewm(span=20, adjust=False).mean()
+            sma50_s = c.rolling(50).mean()
+            ema20 = float(ema20_s.iloc[-1]) if len(c) >= 20 else price
+            sma50 = float(sma50_s.iloc[-1]) if len(c) >= 50 else p_baseline
+            macd_hist = get_macd(c) if len(c) >= 26 else 0.0
+
+            score = ((price - p_baseline) / p_baseline) * max(0.5, rvol)
+
+            if price >= p_baseline and slope_val != "DOWN":
+                fallback_scored.append((t, score))
+
+            is_uptrend = (slope_val in ["UP", "FLAT"])
+            above_buffer = (price >= p_baseline)
+            short_term_bullish = (price >= ema20) and (ema20 >= sma50) and (macd_hist >= -0.01)
+            valid_volume_volatility = (rvol >= 0.70) and (atr_pct >= 0.30)
+
+            if is_uptrend and above_buffer and short_term_bullish and valid_volume_volatility:
+                scored.append((t, score))
+        except Exception:
+            continue
+            
+    scored.sort(key=lambda x: x[1], reverse=True)
+    picks = [item[0] for item in scored[:top_n]]
+    
+    if not picks and fallback_scored:
+        fallback_scored.sort(key=lambda x: x[1], reverse=True)
+        picks = [item[0] for item in fallback_scored[:top_n]]
+
+    return picks if picks else ["SPY", "QQQ", "NVDA", "SMH", "XLK", "AMZN", "MSFT", "IBIT"]
+
+def analyze_tickers(tickers, default_buffer_pct=0.020, rvol_threshold=0.80, min_atr_threshold=0.50, is_recommendations=False):
+    results = []
+    for t in tickers:
+        try:
+            description = get_asset_description(t)
+            df = yf.download(t, period="2y", interval="1d", auto_adjust=True, progress=False)
+            df = clean_df_columns(df)
+            if df.empty or len(df) < 60:
+                continue
+
+            c = df["Close"].squeeze()
+            h = df["High"].squeeze()
+            l = df["Low"].squeeze()
+            o = df["Open"].squeeze()
+            v = df["Volume"].squeeze()
+
+            if isinstance(c, pd.DataFrame): c = c.iloc[:, 0]
+            if isinstance(h, pd.DataFrame): h = h.iloc[:, 0]
+            if isinstance(l, pd.DataFrame): l = l.iloc[:, 0]
+            if isinstance(o, pd.DataFrame): o = o.iloc[:, 0]
+            if isinstance(v, pd.DataFrame): v = v.iloc[:, 0]
+
+            df_clean = pd.DataFrame({"High": h, "Low": l, "Close": c, "Open": o})
+            price = float(c.iloc[-1])
+            vol = float(v.iloc[-1])
+
+            v_sma20 = float(v.rolling(20).mean().iloc[-1]) if len(v) >= 20 else float(v.mean())
+            rvol = vol / v_sma20 if v_sma20 > 0 else 1.0
+
+            has_200 = len(c) >= 200
+            if has_200:
+                baseline_series = c.rolling(200).mean()
+                p_baseline = float(baseline_series.iloc[-1])
+                prev_baseline = float(baseline_series.iloc[-21])
+            else:
+                w = min(50, len(c) - 10)
+                baseline_series = c.rolling(w).mean()
+                p_baseline = float(baseline_series.iloc[-1])
+                prev_baseline = float(baseline_series.iloc[-max(5, len(c)//4)])
+
+            atr = get_atr(df_clean)
+            atr_pct = (atr / price) * 100
+            eff_buf = max(default_buffer_pct, (atr / price) * 1.5)
+
+            u_th = p_baseline * (1.0 + eff_buf)
+            l_th = p_baseline * (1.0 - eff_buf)
+
+            sma_diff = ((p_baseline - prev_baseline) / prev_baseline) * 100
+            if sma_diff > 0.05:
+                slope_label, slope_val = "🟢 UP", "UP"
+            elif sma_diff < -0.05:
+                slope_label, slope_val = "🔴 DOWN", "DOWN"
+            else:
+                slope_label, slope_val = "⚪ FLAT", "FLAT"
+
+            pct_baseline = ((price - p_baseline) / p_baseline) * 100.0
+            rvol_ok = rvol >= rvol_threshold
+            atr_ok = atr_pct >= min_atr_threshold
+
+            rvol_label = f"🟢 {rvol:.2f}x" if rvol_ok else f"🟡 {rvol:.2f}x"
+            atr_label = f"🟢 {atr_pct:.2f}%" if atr_ok else f"🔴 {atr_pct:.2f}%"
+            
+            buf_pct_val = eff_buf * 100.0
+            target_pct_val = default_buffer_pct * 100.0
+            if buf_pct_val <= (target_pct_val * 1.25):
+                buffer_label = f"🟢 {buf_pct_val:.2f}%"
+            elif buf_pct_val <= (target_pct_val * 1.75):
+                buffer_label = f"🟡 {buf_pct_val:.2f}%"
+            else:
+                buffer_label = f"🔴 {buf_pct_val:.2f}%"
+
+            ema20_series = c.ewm(span=20, adjust=False).mean()
+            ema20_curr = float(ema20_series.iloc[-1]) if len(c) >= 20 else price
+            ema20_prev = float(ema20_series.iloc[-2]) if len(c) >= 20 else ema20_curr
+            ema20_arrow = "🟢 ↗" if ema20_curr >= ema20_prev else "🔴 ↘"
+
+            sma50_series = c.rolling(50).mean()
+            sma50_curr = float(sma50_series.iloc[-1]) if len(c) >= 50 else p_baseline
+            sma50_prev = float(sma50_series.iloc[-2]) if len(c) >= 50 else sma50_curr
+            sma50_arrow = "🟢 ↗" if sma50_curr >= sma50_prev else "🔴 ↘"
+
+            macd_hist = get_macd(c) if len(c) >= 26 else 0.0
+            macd_label = "🟢 Bullish" if macd_hist > 0 else "🔴 Bearish"
+
+            short_term_bullish = (price > ema20_curr) and (ema20_curr >= sma50_curr) and (macd_hist > 0)
+            short_term_bearish = (price < ema20_curr) and (ema20_curr <= sma50_curr) and (macd_hist < 0)
+
+            if is_recommendations:
+                if price >= p_baseline and slope_val in ["UP", "FLAT"]:
+                    status_action = "🟢 ACCUMULATE"
+                else:
+                    status_action = "🟢 HOLD"
+            else:
+                if price > u_th and slope_val == "UP" and rvol_ok and atr_ok and short_term_bullish:
+                    status_action = "🟢 ACCUMULATE"
+                elif price > u_th and slope_val == "UP":
+                    status_action = "🟢 HOLD"
+                elif l_th <= price <= u_th:
+                    status_action = "⚪ BUFFER ZONE"
+                elif price < l_th and short_term_bearish:
+                    status_action = "🟡 EARLY WARNING (TRIM)"
+                elif price < l_th and slope_val == "DOWN":
+                    status_action = "🔴 SELL / ROTATE"
+                else:
+                    status_action = "🟡 CAUTION"
+
+            results.append({
+                "Status & Action": status_action,
+                "Ticker": t,
+                "Description": description,
+                "Price": round(price, 2),
+                "200 SMA": f"{round(p_baseline, 2)} {slope_label}",
+                "% vs Baseline": f"{pct_baseline:+.2f}%",
+                "50 SMA": f"{sma50_curr:.2f} {sma50_arrow}",
+                "20 EMA": f"{ema20_curr:.2f} {ema20_arrow}",
+                "MACD Trend": macd_label,
+                "Buffer (%)": buffer_label,
+                "Inst. Vol (RVOL)": rvol_label,
+                "Volatility (ATR %)": atr_label,
+            })
+        except Exception as e:
+            st.error(f"Error processing {t}: {str(e)}")
+
+    return pd.DataFrame(results)
+
+url_params = st.query_params
+init_preset = url_params.get("preset", "Watching")
+if init_preset not in PRESET_CONFIGS:
+    init_preset = "Watching"
+
+if "preset_tickers" not in st.session_state:
+    st.session_state["preset_tickers"] = load_persistent_state()
+else:
+    for name, cfg in PRESET_CONFIGS.items():
+        if name not in st.session_state["preset_tickers"] or (name != "Recommendations" and not st.session_state["preset_tickers"][name].strip()):
+            st.session_state["preset_tickers"][name] = cfg["tickers"]
+
+if "preset_radio" not in st.session_state or st.session_state["preset_radio"] not in PRESET_CONFIGS:
+    st.session_state["preset_radio"] = init_preset
+
+def on_preset_change():
+    sel = st.session_state["preset_radio"]
+    st.query_params["preset"] = sel
+    st.query_params["tickers"] = st.session_state["preset_tickers"][sel]
+
+def on_text_input_change():
+    sel = st.session_state["preset_radio"]
+    key = f"ticker_box_{sel}"
+    if key in st.session_state:
+        val = st.session_state[key]
+        st.session_state["preset_tickers"][sel] = val
+        save_persistent_state(st.session_state["preset_tickers"])
+        st.query_params["preset"] = sel
+        st.query_params["tickers"] = val
+
+with st.sidebar:
+    if st.button("🔄 Reset All Watchlists to Defaults", use_container_width=True, type="secondary"):
+        if os.path.exists(STATE_FILE):
+            try:
+                os.remove(STATE_FILE)
+            except Exception:
+                pass
+        for name, cfg in PRESET_CONFIGS.items():
+            st.session_state["preset_tickers"][name] = cfg["tickers"]
+            if f"ticker_box_{name}" in st.session_state:
+                st.session_state[f"ticker_box_{name}"] = cfg["tickers"]
+        st.success("Watchlists reset to defaults!")
+        st.rerun()
+
+    st.divider()
+
+    with st.expander("📖 **Read Me**", expanded=False):
+        st.markdown("### **1. Active Preset Rationale**")
+        active_preset_name = st.session_state.get("preset_radio", "Watching")
+        current_rationale = PRESET_CONFIGS.get(active_preset_name, {}).get("rationale", "No rationale defined.")
+        st.markdown(f"> **{active_preset_name}**: {current_rationale}")
+
+        st.markdown("---")
+        st.markdown("### **2. All Preset Rationales**")
+        for p_name, p_cfg in PRESET_CONFIGS.items():
+            st.markdown(f"* **{p_name}**: {p_cfg['rationale']}")
+
+        st.markdown("---")
+        st.markdown("### **3. Quick Start Guide**")
+        st.markdown("1. **Select a Watchlist Preset**: Use the horizontal preset buttons at the top of the main panel to choose a curated asset pool.")
+        st.markdown("2. **Customize Tickers**: The text box below displays active tickers. Add or remove comma-separated stock or ETF symbols freely. Changes are saved automatically and persist across app reloads/sleep states.")
+        st.markdown("3. **Run the Screener**: Click the **🚀 Run Screener** button directly below the ticker input box to analyze secular trends.")
+        st.markdown("4. **Fine-Tune Parameters (Optional)**: Adjust core thresholds like the base buffer noise filter, minimum RVOL, or minimum ATR below.")
+
+        st.markdown("---")
+        st.markdown("### **4. Core Architectural Concepts**")
+        st.markdown("* **200-Day Simple Moving Average (SMA) & Short-History Bypass:** The institutional baseline for macro trend-following combined with its directional trajectory (`🟢 UP`, `🔴 DOWN`, `⚪ FLAT`). Tickers with fewer than 200 days of history automatically utilize a short-history moving average baseline.")
+        st.markdown("* **Moving Average Daily Direction (20 EMA & 50 SMA):** Each short-term moving average includes a daily directional arrow (`🟢 ↗` / `🔴 ↘`) comparing its value to the previous trading day.")
+        st.markdown("* **Noise Buffer (±%):** A customizable percentage band built around the baseline (dynamically scaled using ATR) to eliminate whipsaws during minor consolidations.")
+        st.markdown("* **Institutional Volume & Volatility Confirmation:** Measured via **Inst. Vol (RVOL)** and **Volatility (ATR %)** to ensure genuine market participation.")
+
+        st.markdown("---")
+        st.markdown("### **5. Status & Action Classification Matrix**")
+        st.markdown("* 🟢 **ACCUMULATE:** Price is above the Upper Threshold, Trend Slope is **UP**, RVOL and ATR satisfy minimum parameters, and short-term MAs + MACD confirm upward momentum.")
+        st.markdown("* 🟢 **HOLD:** Price is above the Upper Threshold and Trend Slope is **UP**, but short-term volume or momentum indicators are unconfirmed.")
+        st.markdown("* ⚪ **BUFFER ZONE:** Price is between the Lower and Upper Thresholds. Capital actions are held neutral to prevent whipsaws.")
+        st.markdown("* 🟡 **EARLY WARNING (TRIM):** Price slips below the Lower Threshold while short-term momentum confirms distribution.")
+        st.markdown("* 🟡 **CAUTION:** Price is outside the noise band, but diverges from the moving average slope trajectory.")
+        st.markdown("* 🔴 **SELL / ROTATE:** Price is below the Lower Threshold and Trend Slope is **DOWN**.")
+
+        st.markdown("---")
+        st.markdown("### **6. Indicator Visual Badging Logic**")
+        st.markdown("* **Trend Slope & MAs:** 🟢 **UP / Rising** (> +0.05% or higher than previous day), 🔴 **DOWN / Falling** (< -0.05% or lower than previous day).")
+        st.markdown("* **Buffer (%):** 🟢 **Green** if effective buffer <= 1.25x target baseline; 🟡 **Yellow** if <= 1.75x; 🔴 **Red** if wider than 1.75x.")
+        st.markdown("* **Inst. Vol (RVOL):** 🟢 **Green** if >= minimum threshold; 🟡 **Yellow** if below.")
+        st.markdown("* **Volatility (ATR %):** 🟢 **Green** if >= minimum threshold; 🔴 **Red** if below.")
+
+    st.header("Screener Parameters")
+    st.divider()
+
+selected_preset = st.session_state["preset_radio"]
+active_defaults = PRESET_CONFIGS[selected_preset]
+
+if selected_preset == "Recommendations":
+    st.sidebar.info("💡 **Autonomous Mode**: Recommendations evaluate each ticker individually based on live market discovery.")
+    buffer_setting = 2.0
+    rvol_setting = 0.80
+    min_atr_setting = 0.50
+else:
+    buffer_setting = st.sidebar.slider("Base Buffer Noise Filter (%)", 1.0, 5.0, active_defaults["buffer"], 0.5)
+    rvol_setting = st.sidebar.slider("Min RVOL Breakout Confirmation (x)", 0.1, 2.5, active_defaults["rvol"], 0.05)
+    min_atr_setting = st.sidebar.slider("Min Volatility / ATR (%)", 0.0, 5.0, active_defaults["min_atr"], 0.25)
+
+st.title("📈 " + REPO_NAME)
+st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+selected_preset = st.radio(
+    "Preset Selection",
+    options=list(PRESET_CONFIGS.keys()),
+    key="preset_radio",
+    on_change=on_preset_change,
+    horizontal=True,
+    label_visibility="collapsed"
+)
+
+current_tickers_val = st.session_state["preset_tickers"].get(selected_preset, "")
+
+if selected_preset == "Recommendations":
+    col_scan, col_input = st.columns([1, 3])
+    with col_scan:
+        if st.button("🔍 Scan & Refresh", use_container_width=True, type="secondary"):
+            with st.spinner("Executing Strict Accumulation Discovery..."):
+                new_picks = discover_open_world_candidates(top_n=10)
+                if new_picks:
+                    picks_str = ", ".join(new_picks)
+                    st.session_state["preset_tickers"]["Recommendations"] = picks_str
+                    st.session_state["ticker_box_Recommendations"] = picks_str
+                    save_persistent_state(st.session_state["preset_tickers"])
+                    st.success("Recommendations populated with top ACCUMULATE candidates!")
+                    st.rerun()
+                else:
+                    st.warning("No qualifying accumulation candidates found in current market scan.")
+    with col_input:
+        ticker_input = st.text_input(
+            "Watchlist Tickers (Editable):",
+            value=current_tickers_val,
+            key=f"ticker_box_{selected_preset}",
+            on_change=on_text_input_change,
+            help="Edit tickers freely. Changes are saved instantly and persist across sessions.",
+        )
+else:
+    ticker_input = st.text_input(
+        "Watchlist Tickers (Editable):",
+        value=current_tickers_val,
+        key=f"ticker_box_{selected_preset}",
+        on_change=on_text_input_change,
+        help="Edit tickers freely. Changes are saved instantly and persist across sessions.",
+    )
+
+if ticker_input != current_tickers_val:
+    st.session_state["preset_tickers"][selected_preset] = ticker_input
+    st.session_state[f"ticker_box_{selected_preset}"] = ticker_input
+    save_persistent_state(st.session_state["preset_tickers"])
+    st.query_params["preset"] = selected_preset
+    st.query_params["tickers"] = ticker_input
+
+run_screener = st.button("🚀 Run Screener", type="primary", use_container_width=True)
+
+st.divider()
+
+if run_screener:
+    tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
+    if tickers_list:
+        with st.spinner("Analyzing portfolio secular trends..."):
+            df_results = analyze_tickers(
+                tickers_list,
+                default_buffer_pct=buffer_setting / 100.0,
+                rvol_threshold=rvol_setting,
+                min_atr_threshold=min_atr_setting,
+                is_recommendations=(selected_preset == "Recommendations"),
+            )
+        if not df_results.empty:
+            st.subheader("📋 Unified Portfolio Action & Trend Matrix")
+            
+            st.markdown(
+                """
+                <style>
+                dataframe, table, th, td {
+                    white-space: normal !important;
+                    word-wrap: break-word !important;
+                }
+                td:nth-child(2), th:nth-child(2) {
+                    min-width: 250px;
+                    max-width: 350px;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True
+            )
+
+            st.dataframe(df_results, use_container_width=True, hide_index=True)
+
+            st.divider()
+            csv_data = df_results.to_csv(index=False)
+            st.download_button(
+                "📥 Download Matrix CSV",
+                csv_data,
+                "200_day_unified_matrix.csv",
+                "text/csv",
+            )
+else:
+    if selected_preset == "Recommendations":
+        st.info("💡 **Workflow Notice**: Click **🔍 Scan & Refresh** first to dynamically scan and load active **ACCUMULATE** breakout candidates, then click **🚀 Run Screener** to evaluate them.")
+    else:
+        st.info("💡 Enter your tickers above and click **🚀 Run Screener** to generate your consolidated portfolio table.")
