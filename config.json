@@ -33,6 +33,7 @@
     "SCYB": "BNY Mellon High Yield Beta ETF",
     "JEPI": "JPMorgan Equity Premium Income ETF",
     "QQQI": "NEOS Nasdaq-100 High Income ETF",
+    "SPYI": "NEOS S&P 500 High Income ETF",
     "JEPQ": "JPMorgan Nasdaq Equity Premium Income ETF",
     "XYLD": "Global X S&P 500 Covered Call ETF",
     "QYLD": "Global X Nasdaq 100 Covered Call ETF",
@@ -71,65 +72,38 @@
   "preset_configs": {
     "Watching": {
       "tickers": "",
-      "buffer": 2.0,
-      "rvol": 1.00,
-      "min_atr": 0.00,
       "rationale": "Your blank personal active watchlist for monitoring custom setups."
     },
     "Recommendations": {
       "tickers": "",
-      "buffer": 2.0,
-      "rvol": 0.80,
-      "min_atr": 0.50,
-      "rationale": "Autonomous buy engine scanning strictly for verified breakout candidates."
+      "rationale": "Autonomous discovery scanner populating high-probability breakout candidates."
     },
     "Broad Market": {
       "tickers": "SPY, QQQ, DJIA, EMXC, VEA",
-      "buffer": 2.0,
-      "rvol": 0.80,
-      "min_atr": 0.75,
       "rationale": "Broad indices exhibiting moderate volatility."
     },
     "Mag7": {
       "tickers": "NVDA, AAPL, MSFT, AMZN, GOOGL, META, TSLA",
-      "buffer": 2.5,
-      "rvol": 1.00,
-      "min_atr": 1.00,
-      "rationale": "High-beta tech mega-caps requiring wider noise filters."
+      "rationale": "High-beta tech mega-caps requiring robust trend confirmation."
     },
     "Sector ETFs": {
       "tickers": "XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU",
-      "buffer": 2.0,
-      "rvol": 0.85,
-      "min_atr": 0.50,
       "rationale": "Broad sector and industry tracking pool."
     },
     "Bond ETFs": {
-      "tickers": "SGOV, JPST, JAAA, JBBB, SCYB",
-      "buffer": 1.0,
-      "rvol": 0.10,
-      "min_atr": 0.00,
+      "tickers": "SGOV, JPST,JAAA, JBBB, SCYB",
       "rationale": "Fixed-income assets in tight bands."
     },
     "Covered Call ETFs": {
-      "tickers": "JEPI, QQQI, JEPQ, XYLD, QYLD",
-      "buffer": 1.5,
-      "rvol": 0.75,
-      "min_atr": 0.25,
+      "tickers": "SPYI, QQQI, JEPI, JEPQ, XYLD, QYLD",
       "rationale": "Option-overlay funds with income focus."
     },
     "Dividend ETFs": {
       "tickers": "USMV, SPHD, SCHD, VYM",
-      "buffer": 2.0,
-      "rvol": 0.75,
-      "min_atr": 0.50,
       "rationale": "Dividend funds with lower beta."
     },
     "Speculative & Commodities": {
       "tickers": "FBTC, IBIT, IAUM, GLD, SLV",
-      "buffer": 4.0,
-      "rvol": 1.25,
-      "min_atr": 2.00,
       "rationale": "Crypto and commodities with high volatility."
     }
   }
