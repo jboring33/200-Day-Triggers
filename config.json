@@ -75,7 +75,7 @@
       "rationale": "Your blank personal active watchlist for monitoring custom setups."
     },
     "Broad Market": {
-      "tickers": "SPY, QQQ, DJIA, EMXC, VEA",
+      "tickers": "SPY, QQQ, DJIA, IWM, EMXC, VEA",
       "rationale": "Broad indices exhibiting moderate volatility."
     },
     "Mag7": {
@@ -91,11 +91,11 @@
       "rationale": "Fixed-income assets in tight bands."
     },
     "Covered Call ETFs": {
-      "tickers": "SPYI, QQQI, JEPI, JEPQ, XYLD, QYLD",
+      "tickers": "SPYI,QQQI, JEPI, JEPQ, XYLD, QYLD",
       "rationale": "Option-overlay funds with income focus."
     },
     "Dividend ETFs": {
-      "tickers": "USMV, SPHD, SCHD, VYM",
+      "tickers": "SCHD, HDV, VYM, USMV, SPHD ",
       "rationale": "Dividend funds with lower beta."
     },
     "Speculative & Commodities": {
