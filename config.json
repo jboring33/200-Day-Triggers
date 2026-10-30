@@ -41,6 +41,7 @@
     "SPHD": "Invesco S&P 500 High Dividend Low Vol ETF",
     "SCHD": "Schwab U.S. Dividend Equity ETF",
     "VYM": "Vanguard High Dividend Yield ETF",
+    "HDV": "iShares Core High Dividend ETF",
     "FBTC": "Fidelity Wise Origin Bitcoin Fund",
     "IBIT": "iShares Bitcoin Trust",
     "IAUM": "iShares Gold Trust Micro",
@@ -72,34 +73,58 @@
   "preset_configs": {
     "Watching": {
       "tickers": "",
+      "buffer": 2.0,
+      "rvol": 0.80,
+      "min_atr": 0.50,
       "rationale": "Your blank personal active watchlist for monitoring custom setups."
     },
     "Broad Market": {
-      "tickers": "SPY, QQQ, DJIA, IWM, EMXC, VEA",
+      "tickers": "SPY, QQQ, IWM, DJIA, EMXC, VEA",
+      "buffer": 2.0,
+      "rvol": 0.80,
+      "min_atr": 0.50,
       "rationale": "Broad indices exhibiting moderate volatility."
     },
     "Mag7": {
       "tickers": "NVDA, AAPL, MSFT, AMZN, GOOGL, META, TSLA",
+      "buffer": 2.5,
+      "rvol": 1.00,
+      "min_atr": 0.50,
       "rationale": "High-beta tech mega-caps requiring robust trend confirmation."
     },
     "Sector ETFs": {
       "tickers": "XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU",
+      "buffer": 2.0,
+      "rvol": 0.80,
+      "min_atr": 0.50,
       "rationale": "Broad sector and industry tracking pool."
     },
     "Bond ETFs": {
       "tickers": "SGOV, JPST, JAAA, JBBB, SCYB",
+      "buffer": 1.0,
+      "rvol": 0.50,
+      "min_atr": 0.00,
       "rationale": "Fixed-income assets in tight bands."
     },
     "Covered Call ETFs": {
-      "tickers": "SPYI,QQQI, JEPI, JEPQ, XYLD, QYLD",
+      "tickers": "SPYI, QQQI, JEPI, JEPQ, XYLD, QYLD",
+      "buffer": 1.5,
+      "rvol": 0.70,
+      "min_atr": 0.25,
       "rationale": "Option-overlay funds with income focus."
     },
     "Dividend ETFs": {
-      "tickers": "SCHD, HDV, VYM, USMV, SPHD ",
+      "tickers": "USMV, SPHD, SCHD, VYM, HDV",
+      "buffer": 1.5,
+      "rvol": 0.70,
+      "min_atr": 0.25,
       "rationale": "Dividend funds with lower beta."
     },
     "Speculative & Commodities": {
       "tickers": "FBTC, IBIT, IAUM, GLD, SLV",
+      "buffer": 3.0,
+      "rvol": 1.20,
+      "min_atr": 1.00,
       "rationale": "Crypto and commodities with high volatility."
     }
   }
