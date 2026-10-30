@@ -17,98 +17,115 @@ STATE_FILE = "watchlist_state.json"
 CONFIG_FILE = "config.json"
 
 if os.path.exists(CONFIG_FILE):
-  try:
-    with open(CONFIG_FILE, "r") as f:
-      cfg_data = json.load(f)
-      ASSET_DESCRIPTIONS = cfg_data.get("asset_descriptions", {})
-      PRESET_CONFIGS = cfg_data.get("preset_configs", {})
-  except Exception:
+    try:
+        with open(CONFIG_FILE, "r") as f:
+            cfg_data = json.load(f)
+            ASSET_DESCRIPTIONS = cfg_data.get("asset_descriptions", {})
+            PRESET_CONFIGS = cfg_data.get("preset_configs", {})
+    except Exception:
+        ASSET_DESCRIPTIONS = {}
+        PRESET_CONFIGS = {
+            "Watching": {
+                "tickers": "",
+                "buffer": 2.0,
+                "rvol": 0.80,
+                "min_atr": 0.50,
+                "rationale": "Default watchlist",
+            }
+        }
+else:
     ASSET_DESCRIPTIONS = {}
     PRESET_CONFIGS = {
-        "Watching": {"tickers": "", "rationale": "Default watchlist"}
+        "Watching": {
+            "tickers": "",
+            "buffer": 2.0,
+            "rvol": 0.80,
+            "min_atr": 0.50,
+            "rationale": "Default watchlist",
+        }
     }
-else:
-  ASSET_DESCRIPTIONS = {}
-  PRESET_CONFIGS = {"Watching": {"tickers": "", "rationale": "Default watchlist"}}
 
 # Capture passed tickers from RT app and isolate them into a dedicated 'Recommended' preset
 try:
-  url_params = st.query_params
-  init_preset = url_params.get("preset", "Watching")
-  if not isinstance(init_preset, str):
-    init_preset = init_preset[0] if len(init_preset) > 0 else "Watching"
+    url_params = st.query_params
+    init_preset = url_params.get("preset", "Watching")
+    if not isinstance(init_preset, str):
+        init_preset = init_preset[0] if len(init_preset) > 0 else "Watching"
 
-  passed_tickers = url_params.get("tickers", None)
-  if passed_tickers:
-    if not isinstance(passed_tickers, str):
-      passed_tickers = passed_tickers[0] if len(passed_tickers) > 0 else ""
-    if passed_tickers.strip():
-      PRESET_CONFIGS["Recommended"] = {
-          "tickers": passed_tickers,
-          "rationale": "Tickers imported from Recommend Tickers (RT) App",
-      }
-      init_preset = "Recommended"
+    passed_tickers = url_params.get("tickers", None)
+    if passed_tickers:
+        if not isinstance(passed_tickers, str):
+            passed_tickers = passed_tickers[0] if len(passed_tickers) > 0 else ""
+        if passed_tickers.strip():
+            PRESET_CONFIGS["Recommended"] = {
+                "tickers": passed_tickers,
+                "buffer": 2.0,
+                "rvol": 0.80,
+                "min_atr": 0.50,
+                "rationale": "Tickers imported from Recommend Tickers (RT) App",
+            }
+            init_preset = "Recommended"
 except Exception:
-  init_preset = "Watching"
+    init_preset = "Watching"
 
 
 def load_persistent_state():
-  data = {}
-  if os.path.exists(STATE_FILE):
-    try:
-      with open(STATE_FILE, "r") as f:
-        data = json.load(f)
-    except Exception:
-      pass
-  for name, cfg in PRESET_CONFIGS.items():
-    if name not in data:
-      data[name] = cfg["tickers"]
-  return data
+    data = {}
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r") as f:
+                data = json.load(f)
+        except Exception:
+            pass
+    for name, cfg in PRESET_CONFIGS.items():
+        if name not in data:
+            data[name] = cfg["tickers"]
+    return data
 
 
 def save_persistent_state(state_dict):
-  try:
-    with open(STATE_FILE, "w") as f:
-      json.dump(state_dict, f, indent=4)
-  except Exception:
-    pass
+    try:
+        with open(STATE_FILE, "w") as f:
+            json.dump(state_dict, f, indent=4)
+    except Exception:
+        pass
 
 
 def clean_df_columns(df):
-  if isinstance(df.columns, pd.MultiIndex):
-    df.columns = df.columns.get_level_values(0)
-  return df
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    return df
 
 
 def get_atr(df, window=14):
-  h, l, c = df["High"], df["Low"], df["Close"]
-  tr = pd.concat(
-      [h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1
-  ).max(axis=1)
-  return float(tr.rolling(window).mean().iloc[-1])
+    h, l, c = df["High"], df["Low"], df["Close"]
+    tr = pd.concat(
+        [h - l, (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1
+    ).max(axis=1)
+    return float(tr.rolling(window).mean().iloc[-1])
 
 
 def get_macd(close):
-  exp1 = close.ewm(span=12, adjust=False).mean()
-  exp2 = close.ewm(span=26, adjust=False).mean()
-  macd = exp1 - exp2
-  signal = macd.ewm(span=9, adjust=False).mean()
-  hist = macd - signal
-  return float(hist.iloc[-1])
+    exp1 = close.ewm(span=12, adjust=False).mean()
+    exp2 = close.ewm(span=26, adjust=False).mean()
+    macd = exp1 - exp2
+    signal = macd.ewm(span=9, adjust=False).mean()
+    hist = macd - signal
+    return float(hist.iloc[-1])
 
 
 def get_asset_description(symbol):
-  if symbol in ASSET_DESCRIPTIONS:
-    return ASSET_DESCRIPTIONS[symbol]
-  try:
-    t = yf.Ticker(symbol)
-    info = t.info
-    name = info.get("shortName") or info.get("longName")
-    if name:
-      return name
-  except Exception:
-    pass
-  return f"US Listed Asset ({symbol})"
+    if symbol in ASSET_DESCRIPTIONS:
+        return ASSET_DESCRIPTIONS[symbol]
+    try:
+        t = yf.Ticker(symbol)
+        info = t.info
+        name = info.get("shortName") or info.get("longName")
+        if name:
+            return name
+    except Exception:
+        pass
+    return f"US Listed Asset ({symbol})"
 
 
 def analyze_tickers(
@@ -117,244 +134,250 @@ def analyze_tickers(
     rvol_threshold=0.80,
     min_atr_threshold=0.50,
 ):
-  results = []
-  for t in tickers:
-    try:
-      description = get_asset_description(t)
-      df = yf.download(
-          t, period="2y", interval="1d", auto_adjust=True, progress=False
-      )
-      df = clean_df_columns(df)
-      if df.empty or len(df) < 60:
-        continue
+    results = []
+    for t in tickers:
+        try:
+            description = get_asset_description(t)
+            df = yf.download(
+                t, period="2y", interval="1d", auto_adjust=True, progress=False
+            )
+            df = clean_df_columns(df)
+            if df.empty or len(df) < 60:
+                continue
 
-      c = df["Close"].squeeze()
-      h = df["High"].squeeze()
-      l = df["Low"].squeeze()
-      o = df["Open"].squeeze()
-      v = df["Volume"].squeeze()
+            c = df["Close"].squeeze()
+            h = df["High"].squeeze()
+            l = df["Low"].squeeze()
+            o = df["Open"].squeeze()
+            v = df["Volume"].squeeze()
 
-      if isinstance(c, pd.DataFrame):
-        c = c.iloc[:, 0]
-      if isinstance(h, pd.DataFrame):
-        h = h.iloc[:, 0]
-      if isinstance(l, pd.DataFrame):
-        l = l.iloc[:, 0]
-      if isinstance(o, pd.DataFrame):
-        o = o.iloc[:, 0]
-      if isinstance(v, pd.DataFrame):
-        v = v.iloc[:, 0]
+            if isinstance(c, pd.DataFrame):
+                c = c.iloc[:, 0]
+            if isinstance(h, pd.DataFrame):
+                h = h.iloc[:, 0]
+            if isinstance(l, pd.DataFrame):
+                l = l.iloc[:, 0]
+            if isinstance(o, pd.DataFrame):
+                o = o.iloc[:, 0]
+            if isinstance(v, pd.DataFrame):
+                v = v.iloc[:, 0]
 
-      df_clean = pd.DataFrame({"High": h, "Low": l, "Close": c, "Open": o})
-      price = float(c.iloc[-1])
-      vol = float(v.iloc[-1])
+            df_clean = pd.DataFrame({"High": h, "Low": l, "Close": c, "Open": o})
+            price = float(c.iloc[-1])
+            vol = float(v.iloc[-1])
 
-      v_sma20 = (
-          float(v.rolling(20).mean().iloc[-1])
-          if len(v) >= 20
-          else float(v.mean())
-      )
-      rvol = vol / v_sma20 if v_sma20 > 0 else 1.0
+            v_sma20 = (
+                float(v.rolling(20).mean().iloc[-1])
+                if len(v) >= 20
+                else float(v.mean())
+            )
+            rvol = vol / v_sma20 if v_sma20 > 0 else 1.0
 
-      baseline_series = (
-          c.rolling(200).mean()
-          if len(c) >= 200
-          else c.rolling(min(50, len(c) - 10)).mean()
-      )
-      p_baseline = float(baseline_series.iloc[-1])
-      prev_baseline_21 = (
-          float(baseline_series.iloc[-21])
-          if len(baseline_series) >= 21
-          else p_baseline
-      )
-      prev_baseline_daily = (
-          float(baseline_series.iloc[-2])
-          if len(baseline_series) >= 2
-          else p_baseline
-      )
+            baseline_series = (
+                c.rolling(200).mean()
+                if len(c) >= 200
+                else c.rolling(min(50, len(c) - 10)).mean()
+            )
+            p_baseline = float(baseline_series.iloc[-1])
+            prev_baseline_21 = (
+                float(baseline_series.iloc[-21])
+                if len(baseline_series) >= 21
+                else p_baseline
+            )
+            prev_baseline_daily = (
+                float(baseline_series.iloc[-2])
+                if len(baseline_series) >= 2
+                else p_baseline
+            )
 
-      atr = get_atr(df_clean)
-      atr_pct = (atr / price) * 100
-      eff_buf = max(default_buffer_pct, (atr / price) * 1.5)
+            atr = get_atr(df_clean)
+            atr_pct = (atr / price) * 100
+            eff_buf = max(default_buffer_pct, (atr / price) * 1.5)
 
-      u_th = p_baseline * (1.0 + eff_buf)
-      l_th = p_baseline * (1.0 - eff_buf)
+            u_th = p_baseline * (1.0 + eff_buf)
+            l_th = p_baseline * (1.0 - eff_buf)
 
-      sma_diff = (
-          ((p_baseline - prev_baseline_21) / prev_baseline_21) * 100
-      )
-      slope_val = (
-          "UP" if sma_diff > 0.05 else ("DOWN" if sma_diff < -0.05 else "FLAT")
-      )
-      baseline_arrow = "🟢 ↗" if p_baseline >= prev_baseline_daily else "🔴 ↘"
+            sma_diff = (
+                ((p_baseline - prev_baseline_21) / prev_baseline_21) * 100
+            )
+            slope_val = (
+                "UP" if sma_diff > 0.05 else ("DOWN" if sma_diff < -0.05 else "FLAT")
+            )
+            baseline_arrow = "🟢 ↗" if p_baseline >= prev_baseline_daily else "🔴 ↘"
 
-      pct_baseline = ((price - p_baseline) / p_baseline) * 100.0
-      rvol_ok = rvol >= rvol_threshold
-      atr_ok = atr_pct >= min_atr_threshold
+            pct_baseline = ((price - p_baseline) / p_baseline) * 100.0
+            rvol_ok = rvol >= rvol_threshold
+            atr_ok = atr_pct >= min_atr_threshold
 
-      rvol_label = f"🟢 {rvol:.2f}x" if rvol_ok else f"🟡 {rvol:.2f}x"
-      atr_label = f"🟢 {atr_pct:.2f}%" if atr_ok else f"🔴 {atr_pct:.2f}%"
+            rvol_label = f"🟢 {rvol:.2f}x" if rvol_ok else f"🟡 {rvol:.2f}x"
+            atr_label = f"🟢 {atr_pct:.2f}%" if atr_ok else f"🔴 {atr_pct:.2f}%"
 
-      buf_pct_val = eff_buf * 100.0
-      target_pct_val = default_buffer_pct * 100.0
-      if buf_pct_val <= (target_pct_val * 1.25):
-        buffer_label = f"🟢 {buf_pct_val:.2f}%"
-      elif buf_pct_val <= (target_pct_val * 1.75):
-        buffer_label = f"🟡 {buf_pct_val:.2f}%"
-      else:
-        buffer_label = f"🔴 {buf_pct_val:.2f}%"
+            buf_pct_val = eff_buf * 100.0
+            target_pct_val = default_buffer_pct * 100.0
+            if buf_pct_val <= (target_pct_val * 1.25):
+                buffer_label = f"🟢 {buf_pct_val:.2f}%"
+            elif buf_pct_val <= (target_pct_val * 1.75):
+                buffer_label = f"🟡 {buf_pct_val:.2f}%"
+            else:
+                buffer_label = f"🔴 {buf_pct_val:.2f}%"
 
-      ema20_series = c.ewm(span=20, adjust=False).mean()
-      ema20_curr = float(ema20_series.iloc[-1]) if len(c) >= 20 else price
-      ema20_prev = (
-          float(ema20_series.iloc[-2]) if len(c) >= 20 else ema20_curr
-      )
-      ema20_arrow = "🟢 ↗" if ema20_curr >= ema20_prev else "🔴 ↘"
+            ema20_series = c.ewm(span=20, adjust=False).mean()
+            ema20_curr = float(ema20_series.iloc[-1]) if len(c) >= 20 else price
+            ema20_prev = (
+                float(ema20_series.iloc[-2]) if len(c) >= 20 else ema20_curr
+            )
+            ema20_arrow = "🟢 ↗" if ema20_curr >= ema20_prev else "🔴 ↘"
 
-      sma50_series = c.rolling(50).mean()
-      sma50_curr = (
-          float(sma50_series.iloc[-1]) if len(c) >= 50 else p_baseline
-      )
-      sma50_prev = (
-          float(sma50_series.iloc[-2]) if len(c) >= 50 else sma50_curr
-      )
-      sma50_arrow = "🟢 ↗" if sma50_curr >= sma50_prev else "🔴 ↘"
+            sma50_series = c.rolling(50).mean()
+            sma50_curr = (
+                float(sma50_series.iloc[-1]) if len(c) >= 50 else p_baseline
+            )
+            sma50_prev = (
+                float(sma50_series.iloc[-2]) if len(c) >= 50 else sma50_curr
+            )
+            sma50_arrow = "🟢 ↗" if sma50_curr >= sma50_prev else "🔴 ↘"
 
-      macd_hist = get_macd(c) if len(c) >= 26 else 0.0
-      macd_label = "🟢 Bullish" if macd_hist > 0 else "🔴 Bearish"
+            macd_hist = get_macd(c) if len(c) >= 26 else 0.0
+            macd_label = "🟢 Bullish" if macd_hist > 0 else "🔴 Bearish"
 
-      short_term_bullish = (price >= ema20_curr) and (macd_hist >= -0.01)
+            short_term_bullish = (price >= ema20_curr) and (macd_hist >= -0.01)
 
-      # Unified Universal Evaluation Matrix
-      if (
-          price > u_th
-          and slope_val in ["UP", "FLAT"]
-          and rvol_ok
-          and atr_ok
-          and short_term_bullish
-      ):
-        status_action = "🟢 ACCUMULATE"
-      elif price > u_th and slope_val in ["UP", "FLAT"]:
-        status_action = "🟢 HOLD"
-      elif l_th <= price <= u_th:
-        status_action = "⚪ BUFFER ZONE"
-      elif price < l_th and slope_val == "DOWN":
-        status_action = "🔴 SELL / ROTATE"
-      else:
-        status_action = "🟡 CAUTION"
+            # Unified Universal Evaluation Matrix
+            if (
+                price > u_th
+                and slope_val in ["UP", "FLAT"]
+                and rvol_ok
+                and atr_ok
+                and short_term_bullish
+            ):
+                status_action = "🟢 ACCUMULATE"
+            elif price > u_th and slope_val in ["UP", "FLAT"]:
+                status_action = "🟢 HOLD"
+            elif l_th <= price <= u_th:
+                status_action = "⚪ BUFFER ZONE"
+            elif price < l_th and slope_val == "DOWN":
+                status_action = "🔴 SELL / ROTATE"
+            else:
+                status_action = "🟡 CAUTION"
 
-      results.append({
-          "Status & Action": status_action,
-          "Ticker": t,
-          "Description": description,
-          "Price": round(price, 2),
-          "200 SMA": f"{round(p_baseline, 2)} {baseline_arrow}",
-          "% vs Baseline": f"{pct_baseline:+.2f}%",
-          "50 SMA": f"{sma50_curr:.2f} {sma50_arrow}",
-          "20 EMA": f"{ema20_curr:.2f} {ema20_arrow}",
-          "MACD Trend": macd_label,
-          "Buffer (%)": buffer_label,
-          "Inst. Vol (RVOL)": rvol_label,
-          "Volatility (ATR %)": atr_label,
-      })
-    except Exception as e:
-      st.error(f"Error processing {t}: {str(e)}")
+            results.append({
+                "Status & Action": status_action,
+                "Ticker": t,
+                "Description": description,
+                "Price": round(price, 2),
+                "200 SMA": f"{round(p_baseline, 2)} {baseline_arrow}",
+                "% vs Baseline": f"{pct_baseline:+.2f}%",
+                "50 SMA": f"{sma50_curr:.2f} {sma50_arrow}",
+                "20 EMA": f"{ema20_curr:.2f} {ema20_arrow}",
+                "MACD Trend": macd_label,
+                "Buffer (%)": buffer_label,
+                "Inst. Vol (RVOL)": rvol_label,
+                "Volatility (ATR %)": atr_label,
+            })
+        except Exception as e:
+            st.error(f"Error processing {t}: {str(e)}")
 
-  return pd.DataFrame(results)
+    return pd.DataFrame(results)
 
 
 if init_preset not in PRESET_CONFIGS:
-  init_preset = "Watching"
+    init_preset = "Watching"
 
 if "preset_tickers" not in st.session_state:
-  st.session_state["preset_tickers"] = load_persistent_state()
-  if "Recommended" in PRESET_CONFIGS:
+    st.session_state["preset_tickers"] = load_persistent_state()
+    if "Recommended" in PRESET_CONFIGS:
+        st.session_state["preset_tickers"]["Recommended"] = PRESET_CONFIGS[
+            "Recommended"
+        ]["tickers"]
+else:
+    for name, cfg in PRESET_CONFIGS.items():
+        if (
+            name not in st.session_state["preset_tickers"]
+            or not st.session_state["preset_tickers"][name].strip()
+        ):
+            st.session_state["preset_tickers"][name] = cfg["tickers"]
+
+if "Recommended" in PRESET_CONFIGS and "preset_tickers" in st.session_state:
     st.session_state["preset_tickers"]["Recommended"] = PRESET_CONFIGS[
         "Recommended"
     ]["tickers"]
-else:
-  for name, cfg in PRESET_CONFIGS.items():
-    if (
-        name not in st.session_state["preset_tickers"]
-        or not st.session_state["preset_tickers"][name].strip()
-    ):
-      st.session_state["preset_tickers"][name] = cfg["tickers"]
-
-# Ensure Recommended is populated in session state if passed via URL later
-if "Recommended" in PRESET_CONFIGS and "preset_tickers" in st.session_state:
-  st.session_state["preset_tickers"]["Recommended"] = PRESET_CONFIGS[
-      "Recommended"
-  ]["tickers"]
 
 if (
     "preset_radio" not in st.session_state
     or st.session_state["preset_radio"] not in PRESET_CONFIGS
 ):
-  st.session_state["preset_radio"] = init_preset
+    st.session_state["preset_radio"] = init_preset
 
 
 def on_preset_change():
-  sel = st.session_state["preset_radio"]
-  try:
-    st.query_params["preset"] = sel
-    st.query_params["tickers"] = st.session_state["preset_tickers"][sel]
-  except Exception:
-    pass
+    sel = st.session_state["preset_radio"]
+    try:
+        st.query_params["preset"] = sel
+        st.query_params["tickers"] = st.session_state["preset_tickers"][sel]
+    except Exception:
+        pass
 
 
 def on_text_input_change():
-  sel = st.session_state["preset_radio"]
-  key = f"ticker_box_{sel}"
-  if key in st.session_state:
-    val = st.session_state[key]
-    st.session_state["preset_tickers"][sel] = val
-    save_persistent_state(st.session_state["preset_tickers"])
-    try:
-      st.query_params["preset"] = sel
-      st.query_params["tickers"] = val
-    except Exception:
-      pass
+    sel = st.session_state["preset_radio"]
+    key = f"ticker_box_{sel}"
+    if key in st.session_state:
+        val = st.session_state[key]
+        st.session_state["preset_tickers"][sel] = val
+        save_persistent_state(st.session_state["preset_tickers"])
+        try:
+            st.query_params["preset"] = sel
+            st.query_params["tickers"] = val
+        except Exception:
+            pass
 
-
-with st.sidebar:
-  if st.button(
-      "🔄 Reset All Watchlists to Defaults",
-      use_container_width=True,
-      type="secondary",
-  ):
-    if os.path.exists(STATE_FILE):
-      try:
-        os.remove(STATE_FILE)
-      except Exception:
-        pass
-    for name, cfg in PRESET_CONFIGS.items():
-      st.session_state["preset_tickers"][name] = cfg["tickers"]
-      if f"ticker_box_{name}" in st.session_state:
-        st.session_state[f"ticker_box_{name}"] = cfg["tickers"]
-    st.success("Watchlists reset to defaults!")
-    st.rerun()
-
-  st.divider()
-
-  with st.expander("📖 **Read Me**", expanded=False):
-    st.markdown("### **Preset Rationales & Guide**")
-    for p_name, p_cfg in PRESET_CONFIGS.items():
-      st.markdown(f"* **{p_name}**: {p_cfg['rationale']}")
-
-  st.header("Screener Parameters")
-  st.divider()
-
-  global_buffer = st.sidebar.slider(
-      "Base Buffer Noise Filter (%)", 1.0, 5.0, 2.0, 0.5
-  )
-  global_rvol = st.sidebar.slider(
-      "Min RVOL Breakout Confirmation (x)", 0.1, 2.5, 0.80, 0.05
-  )
-  global_atr = st.sidebar.slider(
-      "Min Volatility / ATR (%)", 0.0, 5.0, 0.50, 0.25
-  )
 
 selected_preset = st.session_state["preset_radio"]
+active_cfg = PRESET_CONFIGS.get(selected_preset, {})
+
+with st.sidebar:
+    if st.button(
+        "🔄 Reset All Watchlists to Defaults",
+        use_container_width=True,
+        type="secondary",
+    ):
+        if os.path.exists(STATE_FILE):
+            try:
+                os.remove(STATE_FILE)
+            except Exception:
+                pass
+        for name, cfg in PRESET_CONFIGS.items():
+            st.session_state["preset_tickers"][name] = cfg["tickers"]
+            if f"ticker_box_{name}" in st.session_state:
+                st.session_state[f"ticker_box_{name}"] = cfg["tickers"]
+        st.success("Watchlists reset to defaults!")
+        st.rerun()
+
+    st.divider()
+
+    with st.expander("📖 **Read Me**", expanded=False):
+        st.markdown("### **Preset Rationales & Guide**")
+        for p_name, p_cfg in PRESET_CONFIGS.items():
+            st.markdown(f"* **{p_name}**: {p_cfg['rationale']}")
+
+    st.header("Screener Parameters")
+    st.divider()
+    st.caption(f"Active Preset: **{selected_preset}**")
+
+    # Load parameters specific to the active preset, with safe fallbacks
+    default_buf = float(active_cfg.get("buffer", 2.0))
+    default_rvol_val = float(active_cfg.get("rvol", 0.80))
+    default_atr_val = float(active_cfg.get("min_atr", 0.50))
+
+    preset_buffer = st.sidebar.slider(
+        "Base Buffer Noise Filter (%)", 1.0, 5.0, default_buf, 0.5, key=f"slider_buf_{selected_preset}"
+    )
+    preset_rvol = st.sidebar.slider(
+        "Min RVOL Breakout Confirmation (x)", 0.1, 2.5, default_rvol_val, 0.05, key=f"slider_rvol_{selected_preset}"
+    )
+    preset_atr = st.sidebar.slider(
+        "Min Volatility / ATR (%)", 0.0, 5.0, default_atr_val, 0.25, key=f"slider_atr_{selected_preset}"
+    )
 
 st.title("📈 " + REPO_NAME)
 st.caption("Last updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -380,14 +403,14 @@ ticker_input = st.text_input(
 )
 
 if ticker_input != current_tickers_val:
-  st.session_state["preset_tickers"][selected_preset] = ticker_input
-  st.session_state[f"ticker_box_{selected_preset}"] = ticker_input
-  save_persistent_state(st.session_state["preset_tickers"])
-  try:
-    st.query_params["preset"] = selected_preset
-    st.query_params["tickers"] = ticker_input
-  except Exception:
-    pass
+    st.session_state["preset_tickers"][selected_preset] = ticker_input
+    st.session_state[f"ticker_box_{selected_preset}"] = ticker_input
+    save_persistent_state(st.session_state["preset_tickers"])
+    try:
+        st.query_params["preset"] = selected_preset
+        st.query_params["tickers"] = ticker_input
+    except Exception:
+        pass
 
 run_screener = st.button(
     "🚀 Run Screener", type="primary", use_container_width=True
@@ -396,22 +419,22 @@ run_screener = st.button(
 st.divider()
 
 if run_screener:
-  tickers_list = [
-      t.strip().upper() for t in ticker_input.split(",") if t.strip()
-  ]
-  if tickers_list:
-    with st.spinner("Analyzing portfolio secular trends..."):
-      df_results = analyze_tickers(
-          tickers_list,
-          default_buffer_pct=global_buffer / 100.0,
-          rvol_threshold=global_rvol,
-          min_atr_threshold=global_atr,
-      )
-    if not df_results.empty:
-      st.subheader("📋 Unified Portfolio Action & Trend Matrix")
+    tickers_list = [
+        t.strip().upper() for t in ticker_input.split(",") if t.strip()
+    ]
+    if tickers_list:
+        with st.spinner("Analyzing portfolio secular trends..."):
+            df_results = analyze_tickers(
+                tickers_list,
+                default_buffer_pct=preset_buffer / 100.0,
+                rvol_threshold=preset_rvol,
+                min_atr_threshold=preset_atr,
+            )
+        if not df_results.empty:
+            st.subheader("📋 Unified Portfolio Action & Trend Matrix")
 
-      st.markdown(
-          """
+            st.markdown(
+                """
                 <style>
                 dataframe, table, th, td {
                     white-space: normal !important;
@@ -423,30 +446,28 @@ if run_screener:
                 }
                 </style>
                 """,
-          unsafe_allow_html=True,
-      )
+                unsafe_allow_html=True,
+            )
 
-      st.dataframe(df_results, use_container_width=True, hide_index=True)
+            st.dataframe(df_results, use_container_width=True, hide_index=True)
 
-      st.divider()
-      csv_data = df_results.to_csv(index=False)
-      st.download_button(
-          "📥 Download Matrix CSV",
-          csv_data,
-          "200_day_unified_matrix.csv",
-          "text/csv",
-      )
+            st.divider()
+            csv_data = df_results.to_csv(index=False)
+            st.download_button(
+                "📥 Download Matrix CSV",
+                csv_data,
+                "200_day_unified_matrix.csv",
+                "text/csv",
+            )
+        else:
+            st.warning(
+                "⚠️ No valid data could be retrieved for the specified symbols."
+            )
     else:
-      st.warning(
-          "⚠️ No valid data could be retrieved for the specified symbols."
-      )
-  else:
-    st.warning(
-        "⚠️ Please enter at least one ticker symbol above before running the"
-        " screener."
-    )
+        st.warning(
+            "⚠️ Please enter at least one ticker symbol above before running the screener."
+        )
 else:
-  st.info(
-      "💡 Enter your tickers above and click **🚀 Run Screener** to generate"
-      " your consolidated portfolio table."
-  )
+    st.info(
+        "💡 Enter your tickers above and click **🚀 Run Screener** to generate your consolidated portfolio table."
+    )
